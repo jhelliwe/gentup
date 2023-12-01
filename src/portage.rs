@@ -1,8 +1,13 @@
 use std::fs;
+use std::path::Path;
 use filetime::FileTime;
 use std::process::{Command};
 use crate::prompt::*;
+use crate::PromptType;
+use crate::system_command::*;
 
+// This function checks if the last portage sync was too recent (<=24 hours ago)
+//
 pub fn too_recent() -> bool {
     let portage_metadata = fs::metadata("/var/db/repos/gentoo/metadata/timestamp").unwrap();
     let filestamp = FileTime::from_last_modification_time(&portage_metadata).seconds() ;
@@ -17,18 +22,23 @@ pub fn too_recent() -> bool {
     }
 }
 
-pub fn do_eix_sync() {
-    let process = Command::new("eix-sync")
-    .arg("-q")
-    .spawn()
-    .expect("EIX-SYNC");
-    let _output = match process.wait_with_output() {
-        Ok(output)  => output,
-        Err(err)    => panic!("Retrieving output error: {}", err),
-    };
-    press_cr("Please verify the output of eix-sync above");
+// This functions checks that the eix package is installed. Eix is a Gentoo specific package
+// management command line tool
+//
+pub fn eix_is_missing() -> bool {
+    !Path::new("/usr/bin/eix").exists()
 }
 
+// This functions updates the package tree metadata for Gentoo Linux
+//
+pub fn do_eix_sync() {
+    system_command("eix-sync");
+    ask_user("Please verify the output of eix-sync above", PromptType::PressCR);
+}
+
+// This functions calls eix to check if the package manager "portage" is due an upgrade, since we
+// want to make sure that the sys-apps/portage package is updated before all others!
+//
 pub fn portage_outdated() -> bool {
     print!("Checking portage version \t\t");
     let process = Command::new("eix")
@@ -45,122 +55,61 @@ pub fn portage_outdated() -> bool {
     true
 }
 
+// This functions performs an update of the sys-apps/portage package
+//
 pub fn upgrade_portage() {
-        let process = Command::new("emerge")
-        .arg("--quiet")
-        .arg("-1av")
-        .arg("portage")
-        .spawn()
-        .expect("EMERGE PORTAGE");
-        let _output = match process.wait_with_output() {
-            Ok(output)  => output,
-            Err(err)    => panic!("Retrieving output error: {}", err),
-        };
+        system_command("emerge --quiet -1av portage");
 }
 
+// This function performs an update of the world set - i.e a full system upgrade
+//
 pub fn upgrade_world() {
-        let process = Command::new("emerge")
-        .arg("--quiet")
-        .arg("-auNDv")
-        .arg("--with-bdeps")
-        .arg("y")
-        .arg("--changed-use")
-        .arg("--complete-graph")
-        .arg("@world")
-        .spawn()
-        .expect("EMERGE WORLD");
-        let _output = match process.wait_with_output() {
-            Ok(output)  => output,
-            Err(err)    => panic!("Retrieving output error: {}", err),
-        };
+        system_command("emerge --quiet -auNDv --with-bdeps y --changed-use --complete-graph @world"); 
 }
 
+// This function does a depclean
+//
 pub fn depclean(run_type: crate::Upgrade) {
     match run_type {
         crate::Upgrade::Pretend => {
             println!("Performing dependency check... Please wait");
-            let process = Command::new("emerge")
-            .arg("-p")
-            .arg("--depclean")
-            .spawn()
-            .expect("DEPCLEAN");
-            let _output = match process.wait_with_output() {
-                Ok(output)  => output,
-                Err(err)    => panic!("Retrieving output error: {}", err),
-            };
+            system_command("emerge -p --depclean");
         },
 
-            crate::Upgrade::Real => {
-            let process = Command::new("emerge")
-            .arg("--depclean")
-            .spawn()
-            .expect("DEPCLEAN");
-            let _output = match process.wait_with_output() {
-                Ok(output)  => output,
-                Err(err)    => panic!("Retrieving output error: {}", err),
-            };
-        press_cr("Please verify the output of emerge --depclean above");
+        crate::Upgrade::Real => {
+           system_command("emerge --depclean");
+           ask_user("Please verify the output of emerge --depclean above", PromptType::PressCR);
         }
     }
 }
 
+// This functions calls revdep-rebuild which scans for broken reverse dependencies
 pub fn revdep_rebuild(run_type: crate::Upgrade) {
     match run_type {
         crate::Upgrade::Pretend => { 
             println!("Performing reverse dependency check... Please wait");
-            let process = Command::new("revdep-rebuild")
-            .arg("-pq")
-            .spawn()
-            .expect("REVDEP");
-            let _output = match process.wait_with_output() {
-                Ok(output)  => output,
-                Err(err)    => panic!("Retrieving output error: {}", err),
-            };
+            system_command("revdep-rebuild -pq");
         },
         crate::Upgrade::Real => { 
-            let process = Command::new("revdep-rebuild")
-            .spawn()
-            .expect("REVDEP");
-            let _output = match process.wait_with_output() {
-                Ok(output)  => output,
-                Err(err)    => panic!("Retrieving output error: {}", err),
-            };
-            press_cr("Please verify the output of revdep-rebuild above");
+            system_command("revdep-rebuild");
+            ask_user("Please verify the output of revdep-rebuild above", PromptType::PressCR);
         },
     }
 }
 
+// This functions calls the portage sanity checker
 pub fn eix_test_obsolete() {
         println!("Performing portage hygiene tests");
-        let process = Command::new("eix-test-obsolete")
-        .spawn()
-        .expect("OBSOLETE");
-        let _output = match process.wait_with_output() {
-            Ok(output)  => output,
-            Err(err)    => panic!("Retrieving output error: {}", err),
-        };
+        system_command("eix-test-obsolete");
 }
 
-
+// This functions cleans up old kernels
 pub fn eclean_kernel() {
-        let process = Command::new("eclean-kernel")
-        .arg("-Aa")
-        .spawn()
-        .expect("KERNEL");
-        let _output = match process.wait_with_output() {
-            Ok(output)  => output,
-            Err(err)    => panic!("Retrieving output error: {}", err),
-        };
+        system_command("eclean-kernel -Aa");
 }
 
+// This functions removes old unused package tarballs
+//
 pub fn eclean_distfiles() {
-        let process = Command::new("eclean")
-        .arg("-d")
-        .arg("distfiles")
-        .spawn()
-        .expect("DISTFILES");
-        let _output = match process.wait_with_output() {
-            Ok(output)  => output,
-            Err(err)    => panic!("Retrieving output error: {}", err),
-        };
+        system_command("eclean -d distfiles");
 }
