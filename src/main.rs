@@ -1,11 +1,13 @@
-// Gentoo Updater version 0.03a
+// Gentoo Updater version 0.04a
+
+const VERSION: &str = "0.03a";
 
 pub mod prompt;
 pub mod check_distro;
 pub mod portage;
 pub mod system_command;
 
-use std::process;
+use std::path::Path;
 use prompt::*;
 use check_distro::*;
 use portage::*;
@@ -26,15 +28,30 @@ pub enum PromptType {
 fn main() {
     
     clearscreen::clear().expect("Terminfo problem. Cannot continue");
-    println!("\n\nWelcome to the Gentoo Updater\n\n");
+    println!("\n\nWelcome to the Gentoo Updater v{}\n\n", VERSION);
 
     // Are we running on Gentoo? 
     let _distro = check_distro("Gentoo".to_string()).expect("This updater only works on Gentoo Linux");
     
-    // Is the eix package installed? It is not by default
-    if eix_is_missing() {
-        println!("This program requires eix to be installed. Please run 'emerge -av app-portage/eix' first");
-        process::exit(2);
+    // We won't get much further if eix is not installed. We must check this
+    if !Path::new("/usr/bin/eix").exists() {
+        system_command("emerge --quiet -v app-portage-eix"); 
+    }
+    
+    // Check some required *by me) packages are installed. Some are not by default
+    println!("Checking installed packages");
+    let packages_to_check = [ "app-admin/eclean-kernel", 
+        "app-portage/gentoolkit", 
+        "app-portage/pfl",
+        "app-portage/ufed",
+        "net-dns/bind-tools"
+        ];
+    for check in packages_to_check {
+            if package_is_missing(&check) {
+            println!("This program requires {} to be installed. Installing...", check);
+            let cmdline=["emerge --quiet -v ", check].concat();
+            system_command(&cmdline);
+            }
     }
 
     /* Now check the timestamp of the Gentoo package repo to prevent more than one sync per day

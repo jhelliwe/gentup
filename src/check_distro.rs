@@ -9,7 +9,7 @@ pub fn check_distro(required_distro: String) -> Result<String, String>  {
     let parts = firstline.split('=');
     let parts: Vec<&str> = parts.collect();
     let detected_distro = parts[1].to_string();
-    println!("\t OK (Running on {})", detected_distro);
+    println!("\t Running on {}", detected_distro);
     match required_distro.eq(&detected_distro) {
         true => Ok(detected_distro),
         false => Err(detected_distro),

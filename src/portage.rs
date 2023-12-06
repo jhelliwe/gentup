@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::Path;
 use filetime::FileTime;
 use std::process::{Command};
 use crate::prompt::*;
@@ -22,11 +21,20 @@ pub fn too_recent() -> bool {
     }
 }
 
-// This functions checks that the eix package is installed. Eix is a Gentoo specific package
-// management command line tool
+// This functions checks that a named package is installed. 
 //
-pub fn eix_is_missing() -> bool {
-    !Path::new("/usr/bin/eix").exists()
+pub fn package_is_missing(package: &str) -> bool {
+    let process = Command::new("eix")
+    .arg(package)
+    .output()
+    .expect("EIX");
+    let output = String::from_utf8_lossy(&process.stdout);
+    if output.eq("No matches found\n") {
+        println!("{} is not installed", package);
+        return true;
+    }
+    println!("Package {} is installed", package) ;
+    false
 }
 
 // This functions updates the package tree metadata for Gentoo Linux
