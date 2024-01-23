@@ -4,6 +4,7 @@ use std::process::{Command};
 use crate::prompt::*;
 use crate::PromptType;
 use crate::system_command::*;
+use crate::Upgrade;
 
 // This function checks if the last portage sync was too recent (<=24 hours ago)
 //
@@ -77,14 +78,14 @@ pub fn upgrade_world() {
 
 // This function does a depclean
 //
-pub fn depclean(run_type: crate::Upgrade) {
+pub fn depclean(run_type: Upgrade) {
     match run_type {
-        crate::Upgrade::Pretend => {
+        Upgrade::Pretend => {
             println!("Performing dependency check... Please wait");
             system_command("emerge -p --depclean");
         },
 
-        crate::Upgrade::Real => {
+        Upgrade::Real => {
            system_command("emerge --depclean");
            ask_user("Please verify the output of emerge --depclean above", PromptType::PressCR);
         }
@@ -92,13 +93,13 @@ pub fn depclean(run_type: crate::Upgrade) {
 }
 
 // This functions calls revdep-rebuild which scans for broken reverse dependencies
-pub fn revdep_rebuild(run_type: crate::Upgrade) {
+pub fn revdep_rebuild(run_type: Upgrade) {
     match run_type {
-        crate::Upgrade::Pretend => { 
+        Upgrade::Pretend => { 
             println!("Performing reverse dependency check... Please wait");
             system_command("revdep-rebuild -pq");
         },
-        crate::Upgrade::Real => { 
+        Upgrade::Real => { 
             system_command("revdep-rebuild");
             ask_user("Please verify the output of revdep-rebuild above", PromptType::PressCR);
         },

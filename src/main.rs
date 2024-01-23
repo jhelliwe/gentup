@@ -1,6 +1,5 @@
-// Gentoo Updater version 0.04a
-
-const VERSION: &str = "0.03a";
+// Gentoo Updater version 0.06a
+const VERSION: &str = "0.06a";
 
 pub mod prompt;
 pub mod check_distro;
@@ -36,14 +35,17 @@ fn main() {
     // We won't get much further if eix is not installed. We must check this
     if !Path::new("/usr/bin/eix").exists() {
         system_command("emerge --quiet -v app-portage-eix"); 
+        system_command("eix-update");
     }
     
-    // Check some required *by me) packages are installed. Some are not by default
+    // Check some required (by me) packages are installed. Useful for a just-installed Gentoo
     println!("Checking installed packages");
-    let packages_to_check = [ "app-admin/eclean-kernel", 
+    let packages_to_check = [ 
+        "app-portage/eix", 
         "app-portage/gentoolkit", 
         "app-portage/pfl",
         "app-portage/ufed",
+        "app-admin/eclean-kernel", 
         "net-dns/bind-tools"
         ];
     for check in packages_to_check {
@@ -65,10 +67,7 @@ fn main() {
     if portage_outdated() { upgrade_portage() }
 
     // All pre-requisites done - time for upgrade - give user a chance to quit
-    ask_user("\n\nReady for upgrade?\t\t", PromptType::PressCR );
-
-    // Upgrade all installed packages 
-    if ask_user("About to perform world update", PromptType::ClearScreen) { upgrade_world(); }
+    if ask_user("\n\nReady for upgrade?\t\t", PromptType::Review ) { upgrade_world();  }
 
     // List and remove orphaned dependencies
     depclean(Upgrade::Pretend);
