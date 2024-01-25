@@ -52,12 +52,12 @@ pub fn exit_on_failure(shellout_result: &(Result<String, Box<dyn Error>>, i32)) 
     match shellout_result {
         (Ok(_), status) => {
             if *status != 0 {
-                eprintln!("The command had a non zero exit status. Please check.");
+                eprintln!("<<< The command had a non zero exit status. Please check.");
                 process::exit(1);
             }
         }
         (Err(errors), _) => {
-            eprintln!("There was a problem executing the command: {}", errors);
+            eprintln!("<<< There was a problem executing the command: {}", errors);
             process::exit(1);
         }
     }

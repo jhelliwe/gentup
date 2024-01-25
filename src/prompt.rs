@@ -9,11 +9,11 @@ pub fn ask_user(userinput: &str, mode: crate::PromptType) -> bool {
     }
     if mode != PressCR {
         println!(
-            "{}: Press return to continue, s to skip, q to quit",
+            ">>> {}: Press return to continue, s to skip, q to quit",
             userinput
         );
     } else {
-        println!("{}: Press return to continue, or q to quit", userinput);
+        println!(">>> {}: Press return to continue, or q to quit", userinput);
     }
 
     let mut user_input = String::new();
@@ -23,13 +23,13 @@ pub fn ask_user(userinput: &str, mode: crate::PromptType) -> bool {
         .expect("Failed to read line");
 
     if user_input.eq("q\n") {
-        println!("Quitting at user request");
+        println!("<<< Quitting at user request");
         process::exit(0);
     }
     if user_input.eq("s\n") {
-        println!("Skipping at user request");
+        println!("<<< Skipping at user request");
         return false;
     }
-    println!("Acknowledged");
+    println!(">>> Acknowledged");
     true
 }

@@ -5,6 +5,7 @@ use crate::Upgrade;
 use filetime::FileTime;
 use std::fs;
 use std::process;
+use std::io::Write;
 
 pub fn eix_diff() -> bool {
     let shellout_result = linux::system_command_quiet("eix-diff");
@@ -32,14 +33,14 @@ pub fn eix_diff() -> bool {
             let num_updates = pending_updates.len();
             match num_updates {
                 0 => {
-                    println!("There are no pending updates");
+                    println!("<<< There are no pending updates");
                     return false;
                 }
                 1 => {
-                    println!("There is 1 package pending an update");
+                    println!("<<< There is 1 package pending an update");
                 }
                 _ => {
-                    println!("\nThere are {} packages pending updates", num_updates);
+                    println!("\n<<< There are {} packages pending updates", num_updates);
                 }
             }
             for item in pending_updates {
@@ -49,7 +50,7 @@ pub fn eix_diff() -> bool {
             return true;
         }
         (Err(_), _) => {
-            eprintln!("Error calling eix-diff");
+            eprintln!("<<< Error calling eix-diff");
             return false;
         }
     }
@@ -73,17 +74,19 @@ pub fn too_recent() -> bool {
 // This functions checks that a named package is installed.
 //
 pub fn package_is_missing(package: &str) -> bool {
+    print!(".");
+    std::io::stdout().flush().unwrap();
     let shellout_result = linux::system_command_quiet(&["equery l ", package].concat());
     match shellout_result {
         (Ok(_), return_code) => {
             if return_code != 0 {
-                println!("{} is not installed", package);
+                println!("\n<<< {} is not installed", package);
                 return true;
             }
             false
         }
         (Err(returned_error), _) => {
-            eprintln!("Problem running command: {}", returned_error);
+            eprintln!("\n<<< Problem running command: {}", returned_error);
             process::exit(1);
         }
     }
@@ -97,8 +100,7 @@ pub fn do_eix_sync() {
     linux::exit_on_failure(&shellout_result);
 }
 
-// This functions calls eix to check if the package manager "portage" is due an upgrade, since we
-// want to make sure that the sys-apps/portage package is updated before all others!
+// This functions calls eix to check if the named package is due an upgrade
 //
 pub fn package_outdated(package: &str) -> bool {
     let shellout_result = linux::system_command_quiet(&["eix -u ", package].concat());
@@ -107,17 +109,17 @@ pub fn package_outdated(package: &str) -> bool {
             if return_status != 0 {
                 return false;
             }
-            println!("{} needs upgrade", package);
+            println!("<<< {} needs upgrade", package);
             return true;
         }
         (Err(_), returned_error) => {
-            eprintln!("Command returned {}", returned_error);
+            eprintln!("<<< Command returned {}", returned_error);
             process::exit(1);
         }
     }
 }
 
-// This functions performs an update of the sys-apps/portage package
+// This functions performs an update of the named package
 //
 pub fn upgrade_package(package: &str) {
     let shellout_result = linux::system_command(&["emerge --quiet -1av ", package].concat());

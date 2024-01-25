@@ -61,19 +61,23 @@ fn main() {
     let _distro =
         linux::check_distro("Gentoo".to_string()).expect("This updater only works on Gentoo Linux");
 
-    println!(">>> Checking environment");
+    print!(">>> Checking environment: ");
     // We won't get much further if eix is not installed. We must check this
     if !Path::new("/usr/bin/eix").exists() {
-        let mut shellout_result = linux::system_command("emerge --quiet -v app-portage-eix");
+        let mut shellout_result = linux::system_command("emerge --quiet -v app-portage/eix");
         linux::exit_on_failure(&shellout_result);
         shellout_result = linux::system_command("eix-update");
         linux::exit_on_failure(&shellout_result);
     }
 
+    // We won't get much further if equery is not installed. We must check this too
+    if !Path::new("/usr/bin/equery").exists() {
+        let shellout_result = linux::system_command("emerge --quiet -v app-portage/gentoolkit");
+        linux::exit_on_failure(&shellout_result);
+    }
+
     // Check some required (by me) packages are installed. Useful for a just-installed Gentoo
     let packages_to_check = [
-        "app-portage/eix",
-        "app-portage/gentoolkit",
         "app-portage/pfl",
         "app-portage/ufed",
         "app-admin/eclean-kernel",
@@ -82,7 +86,7 @@ fn main() {
     for check in packages_to_check {
         if portage::package_is_missing(&check) {
             println!(
-                "This program requires {} to be installed. Installing...",
+                "<<< This program requires {} to be installed. Installing...",
                 check
             );
             let cmdline = [
@@ -94,6 +98,7 @@ fn main() {
             linux::exit_on_failure(&shellout_result);
         }
     }
+    println!(" OK");
 
     /* Now check the timestamp of the Gentoo package repo to prevent more than one sync per day
      * and if we are not too recent from the last emerge --sync, call eix-sync
