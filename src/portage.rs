@@ -1,10 +1,59 @@
+use crate::linux;
 use crate::prompt::*;
-use crate::system_command::*;
 use crate::PromptType;
 use crate::Upgrade;
 use filetime::FileTime;
 use std::fs;
-use std::process::Command;
+use std::process;
+
+pub fn eix_diff() -> bool {
+    let shellout_result = linux::system_command_quiet("eix-diff");
+    linux::exit_on_failure(&shellout_result);
+    match shellout_result {
+        (Ok(output), _) => {
+            let mut pending_updates = Vec::new();
+            for line in output.split("\n") {
+                if line.starts_with("[U") {
+                    let mut words = line.split_whitespace();
+                    let mut word: Option<&str> = Some("");
+                    for _counter in 1..=3 {
+                        word = words.next();
+                    }
+                    match word {
+                        Some(word) => {
+                            pending_updates.push(word);
+                        }
+                        None => {
+                            break;
+                        }
+                    }
+                }
+            }
+            let num_updates = pending_updates.len();
+            match num_updates {
+                0 => {
+                    println!("There are no installed packages pending updates");
+                    return false;
+                }
+                1 => {
+                    println!("There is 1 package pending an update");
+                }
+                _ => {
+                    println!("\nThere are {} packages pending updates", num_updates);
+                }
+            }
+            for item in pending_updates {
+                print!("{}   ", item);
+            }
+            println!();
+            return true;
+        }
+        (Err(_), _) => {
+            eprintln!("Error calling eix-diff");
+            return false;
+        }
+    }
+}
 
 // This function checks if the last portage sync was too recent (<=24 hours ago)
 //
@@ -13,9 +62,8 @@ pub fn too_recent() -> bool {
     let filestamp = FileTime::from_last_modification_time(&portage_metadata).seconds();
     let nowutc = chrono::offset::Utc::now();
     let nowstamp = nowutc.timestamp();
-
     if nowstamp - filestamp < (24 * 60 * 60) {
-        println!("Checking timestamp of last sync\t\t Skipping sync phase");
+        println!(">>> Last sync was too recent: Skipping sync phase");
         return true;
     } else {
         return false;
@@ -25,106 +73,162 @@ pub fn too_recent() -> bool {
 // This functions checks that a named package is installed.
 //
 pub fn package_is_missing(package: &str) -> bool {
-    let process = Command::new("eix").arg(package).output().expect("EIX");
-    let output = String::from_utf8_lossy(&process.stdout);
-    if output.eq("No matches found\n") {
-        println!("{} is not installed", package);
-        return true;
+    let shellout_result = linux::system_command_quiet(&["equery l ", package].concat());
+    match shellout_result {
+        (Ok(_), return_code) => {
+            if return_code != 0 {
+                println!("{} is not installed", package);
+                return true;
+            }
+            false
+        }
+        (Err(returned_error), _) => {
+            eprintln!("Problem running command: {}", returned_error);
+            process::exit(1);
+        }
     }
-    println!("Package {} is installed", package);
-    false
 }
 
 // This functions updates the package tree metadata for Gentoo Linux
 //
 pub fn do_eix_sync() {
-    system_command("eix-sync");
-    ask_user(
-        "Please verify the output of eix-sync above",
-        PromptType::PressCR,
-    );
+    println!(">>> Downloading latest package tree - please wait");
+    let shellout_result = linux::system_command("eix-sync -q");
+    linux::exit_on_failure(&shellout_result);
 }
 
 // This functions calls eix to check if the package manager "portage" is due an upgrade, since we
 // want to make sure that the sys-apps/portage package is updated before all others!
 //
-pub fn portage_outdated() -> bool {
-    print!("Checking portage version \t\t");
-    let process = Command::new("eix")
-        .arg("-u")
-        .arg("sys-apps/portage")
-        .output()
-        .expect("EIX PORTAGE");
-    let output = String::from_utf8_lossy(&process.stdout);
-    if output.eq("No matches found\n") {
-        println!(" sys-apps/portage is up to date");
-        return false;
+pub fn package_outdated(package: &str) -> bool {
+    let shellout_result = linux::system_command_quiet(&["eix -u ", package].concat());
+    match shellout_result {
+        (Ok(_), return_status) => {
+            if return_status != 0 {
+                return false;
+            }
+            println!("{} needs upgrade", package);
+            return true;
+        }
+        (Err(_), returned_error) => {
+            eprintln!("Command returned {}", returned_error);
+            process::exit(1);
+        }
     }
-    println!("Portage needs ugrade");
-    true
 }
 
 // This functions performs an update of the sys-apps/portage package
 //
-pub fn upgrade_portage() {
-    system_command("emerge --quiet -1av portage");
+pub fn upgrade_package(package: &str) {
+    let shellout_result = linux::system_command(&["emerge --quiet -1av ", package].concat());
+    linux::exit_on_failure(&shellout_result);
 }
 
 // This function performs an update of the world set - i.e a full system upgrade
 //
 pub fn upgrade_world() {
-    system_command("emerge --quiet -auNDv --with-bdeps y --changed-use --complete-graph @world");
+    let shellout_result = linux::system_command(
+        "emerge --quiet -auNDv --with-bdeps y --changed-use --complete-graph @world",
+    );
+    linux::exit_on_failure(&shellout_result);
 }
 
 // This function does a depclean
 //
-pub fn depclean(run_type: Upgrade) {
+pub fn depclean(run_type: Upgrade) -> i32 {
     match run_type {
         Upgrade::Pretend => {
-            println!("Performing dependency check... Please wait");
-            system_command("emerge -p --depclean");
+            println!(">>> Performing dependency check... Please wait");
+            let shellout_result = linux::system_command_quiet("emerge -p --depclean");
+            linux::exit_on_failure(&shellout_result);
+            match shellout_result {
+                (Ok(output), _) => {
+                    let lines = output.split("\n");
+                    for line in lines {
+                        println!("{line}");
+                        if line.starts_with("Number to remove") {
+                            let mut words = line.split_whitespace();
+                            let mut word: Option<&str> = Some("");
+                            for _counter in 1..=4 {
+                                word = words.next();
+                            }
+                            match word {
+                                Some(word) => {
+                                    return word.parse().unwrap();
+                                }
+                                None => {
+                                    return 0;
+                                }
+                            }
+                        }
+                    }
+                }
+                (Err(_), _) => {}
+            }
+            return 0;
         }
 
         Upgrade::Real => {
-            system_command("emerge --depclean");
+            let shellout_result = linux::system_command("emerge --depclean");
+            linux::exit_on_failure(&shellout_result);
             ask_user(
                 "Please verify the output of emerge --depclean above",
                 PromptType::PressCR,
             );
+            return 0;
         }
     }
 }
 
-// This functions calls revdep-rebuild which scans for broken reverse dependencies
-pub fn revdep_rebuild(run_type: Upgrade) {
+pub fn revdep_rebuild(run_type: Upgrade) -> bool {
     match run_type {
         Upgrade::Pretend => {
-            println!("Performing reverse dependency check... Please wait");
-            system_command("revdep-rebuild -pq");
+            println!(">>> Performing reverse dependency check... Please wait");
+            let shellout_result = linux::system_command_quiet("revdep-rebuild -ip");
+            linux::exit_on_failure(&shellout_result);
+            match shellout_result {
+                (Ok(output),_) => {
+                    let lines = output.split("\n");
+                    for line in lines {
+                        println!("{line}");
+                        if line.starts_with("Your systen is consistent") {
+                            return true;
+                        }
+                    }
+                }
+                (Err(_),_) => {
+                }
+            }
+            return false;
         }
         Upgrade::Real => {
-            system_command("revdep-rebuild");
+            let shellout_result = linux::system_command("revdep-rebuild");
+            linux::exit_on_failure(&shellout_result);
             ask_user(
                 "Please verify the output of revdep-rebuild above",
                 PromptType::PressCR,
             );
+            return true;
         }
     }
 }
 
 // This functions calls the portage sanity checker
 pub fn eix_test_obsolete() {
-    println!("Performing portage hygiene tests");
-    system_command("eix-test-obsolete");
+    println!(">>> Performing portage hygiene tests");
+    let shellout_result = linux::system_command("eix-test-obsolete");
+    linux::exit_on_failure(&shellout_result);
 }
 
 // This functions cleans up old kernels
 pub fn eclean_kernel() {
-    system_command("eclean-kernel -Aa");
+    let shellout_result = linux::system_command("eclean-kernel -Aa");
+    linux::exit_on_failure(&shellout_result);
 }
 
 // This functions removes old unused package tarballs
 //
 pub fn eclean_distfiles() {
-    system_command("eclean -d distfiles");
+    let shellout_result = linux::system_command("eclean -d distfiles");
+    linux::exit_on_failure(&shellout_result);
 }

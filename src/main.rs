@@ -1,17 +1,11 @@
-// Gentoo Updater version 0.06a
+// Gentoo Updater version 0.07a
 const VERSION: &str = "0.07a";
 
-pub mod check_distro;
+pub mod linux;
 pub mod portage;
 pub mod prompt;
-pub mod system_command;
-
-use check_distro::*;
-use portage::*;
-use prompt::*;
 use std::path::Path;
 use std::process;
-use system_command::*;
 
 pub enum Upgrade {
     Real,
@@ -26,29 +20,23 @@ pub enum PromptType {
 }
 
 fn main() {
-    let foobar = system_command_v2("false");
-    if let (Ok(ref output), status) = foobar {
-        println!("from main - {:?} - {} ", output, status);
-    } else {
-        println!("there was an error");
-        process::exit(1);
-    }
-
-    clearscreen::clear().expect("Terminfo problem. Cannot continue");
+    let _ = clearscreen::clear(); 
     println!("\n\nWelcome to the Gentoo Updater v{}\n\n", VERSION);
 
     // Are we running on Gentoo?
     let _distro =
-        check_distro("Gentoo".to_string()).expect("This updater only works on Gentoo Linux");
+        linux::check_distro("Gentoo".to_string()).expect("This updater only works on Gentoo Linux");
 
+    println!(">>> Checking environment");
     // We won't get much further if eix is not installed. We must check this
     if !Path::new("/usr/bin/eix").exists() {
-        system_command("emerge --quiet -v app-portage-eix");
-        system_command("eix-update");
+        let mut shellout_result = linux::system_command("emerge --quiet -v app-portage-eix");
+        linux::exit_on_failure(&shellout_result);
+        shellout_result = linux::system_command("eix-update");
+        linux::exit_on_failure(&shellout_result);
     }
 
     // Check some required (by me) packages are installed. Useful for a just-installed Gentoo
-    println!("Checking installed packages");
     let packages_to_check = [
         "app-portage/eix",
         "app-portage/gentoolkit",
@@ -58,82 +46,90 @@ fn main() {
         "net-dns/bind-tools",
     ];
     for check in packages_to_check {
-        if package_is_missing(&check) {
+        if portage::package_is_missing(&check) {
             println!(
                 "This program requires {} to be installed. Installing...",
                 check
             );
-            let cmdline = ["emerge --quiet -v ", check].concat();
-            let shellout_result = system_command_v2(&cmdline);
-            match shellout_result {
-                (Ok(_), status) => {
-                    if status != 0 {
-                        eprintln!("The command had a non zero exit status. Please check.");
-                        process::exit(1);
-                    }
-                }
-                (Err(errors), _) => {
-                    eprintln!("There was a problem executing the command: {}", errors);
-                    process::exit(1);
-                }
-            }
+            let cmdline = [
+                "emerge --quiet --autounmask y --autounmask-write y -av ",
+                check,
+            ]
+            .concat();
+            let shellout_result = linux::system_command(&cmdline);
+            linux::exit_on_failure(&shellout_result);
         }
     }
 
     /* Now check the timestamp of the Gentoo package repo to prevent more than one sync per day
      * and if we are not too recent from the last emerge --sync, call eix-sync
      */
-    if !too_recent() {
-        do_eix_sync();
+
+    if !portage::too_recent() {
+        portage::do_eix_sync();
     }
 
     /* Often is it necessary to update sys-apps/portage first before updating world
      * Next we need to find out if there is an update available for portage
+     * and same again for gcc
      */
-    if portage_outdated() {
-        upgrade_portage()
+
+    if portage::package_outdated("sys-apps/portage") {
+        portage::upgrade_package("sys-apps/portage");
+    }
+    if portage::package_outdated("sys-devel/gcc") {
+        portage::upgrade_package("sys-devel/gcc");
+    }
+
+    // Present a list of packages to be updated to the screen
+    // If there are no packages pending updates, we can quit at this stage
+    
+    if !portage::eix_diff() {
+        process::exit(0);
     }
 
     // All pre-requisites done - time for upgrade - give user a chance to quit
-    if ask_user("\n\nReady for upgrade?\t\t", PromptType::Review) {
-        upgrade_world();
+    if prompt::ask_user("\n\nReady for upgrade?\t\t", PromptType::Review) {
+        portage::upgrade_world();
     }
 
     // List and remove orphaned dependencies
-    depclean(Upgrade::Pretend);
-    if ask_user(
-        "Perform dependency cleanup as per above?",
-        PromptType::Review,
-    ) {
-        depclean(Upgrade::Real);
+    if portage::depclean(Upgrade::Pretend) != 0 {
+        if prompt::ask_user(
+            "Perform dependency cleanup as per above?",
+            PromptType::Review,
+        ) {
+            portage::depclean(Upgrade::Real);
+        }
     }
 
     // Check reverse dependencies
-    revdep_rebuild(Upgrade::Pretend);
-    if ask_user("Perform reverse dependency rebuild?", PromptType::Review) {
-        revdep_rebuild(Upgrade::Real);
+    if portage::revdep_rebuild(Upgrade::Pretend) {
+        if prompt::ask_user("Perform reverse dependency rebuild?", PromptType::Review) {
+            portage::revdep_rebuild(Upgrade::Real);
+        }
     }
 
     // Check Portage sanity
-    eix_test_obsolete();
+    portage::eix_test_obsolete();
 
     // Cleanup old kernels
-    if ask_user("Clean up old kernels?", PromptType::Review) {
-        eclean_kernel();
+    if prompt::ask_user("Clean up old kernels?", PromptType::Review) {
+        portage::eclean_kernel();
     }
 
     // Cleanup old distfiles
-    if ask_user(
+    if prompt::ask_user(
         "Clean up old distribution source tarballs?",
         PromptType::Review,
     ) {
-        eclean_distfiles();
+        portage::eclean_distfiles();
     }
 
     // fstrim
-    if ask_user("Reclaim free blocks?", PromptType::Review) {
-        call_fstrim();
+    if prompt::ask_user("Reclaim free blocks?", PromptType::Review) {
+        linux::call_fstrim();
     }
 
-    println!("All done!!!");
+    println!(">>> All done!!!");
 }
