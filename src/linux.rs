@@ -5,7 +5,7 @@ use std::io::{BufRead, BufReader};
 use std::process::{self, Command};
 
 pub fn system_command(command_line: &str) -> (Result<String, Box<dyn Error>>, i32) {
-    println!("Executing {}", command_line);
+    println!(">>> Executing {}", command_line);
     let mut command_words = Vec::new();
     for word in command_line.split_whitespace() {
         command_words.push(word);
@@ -74,7 +74,7 @@ pub fn check_distro(required_distro: String) -> Result<String, String> {
     let parts = firstline.split('=');
     let parts: Vec<&str> = parts.collect();
     let detected_distro = parts[1].to_string();
-    println!(">>> Running on {}", detected_distro);
+    println!(">>> Running on {}: OK", detected_distro);
     match required_distro.eq(&detected_distro) {
         true => Ok(detected_distro),
         false => Err(detected_distro),

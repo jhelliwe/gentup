@@ -32,7 +32,7 @@ pub fn eix_diff() -> bool {
             let num_updates = pending_updates.len();
             match num_updates {
                 0 => {
-                    println!("There are no installed packages pending updates");
+                    println!("There are no pending updates");
                     return false;
                 }
                 1 => {

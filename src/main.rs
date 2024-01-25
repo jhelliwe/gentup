@@ -4,6 +4,7 @@ const VERSION: &str = "0.07a";
 pub mod linux;
 pub mod portage;
 pub mod prompt;
+use std::env;
 use std::path::Path;
 use std::process;
 
@@ -20,8 +21,41 @@ pub enum PromptType {
 }
 
 fn main() {
+    let args = env::args();
+    let mut force: bool = false;
+    let mut first = true;
+    for arg in args {
+        if first {
+            first = false;
+            continue
+        }
+        match &arg[..] {
+            "-h" | "--help" => {
+                println!("Usage:\n\n \
+                    gentup [options]\n \
+                    Options:\n\n\
+                    -h, --help     Display this help text, then exit\n\
+                    -f, --force    Force eix-sync, bypassing the timestamp check\n\
+                    -V, --version  Display the program version\
+                ");
+                process::exit(0);
+            }
+            "-V" | "--version" => {
+                println!("gentup version {}", VERSION);
+                process::exit(0);
+            }
+            "-f" | "--force" => {
+                force = true;
+            }
+            _ => {
+                eprintln!("Error: usage - gentup [--help|--force|--version]");
+                process::exit(1);
+            }
+        }
+    }
+
     let _ = clearscreen::clear(); 
-    println!("\n\nWelcome to the Gentoo Updater v{}\n\n", VERSION);
+    println!("\nWelcome to the Gentoo Updater v{}\n", VERSION);
 
     // Are we running on Gentoo?
     let _distro =
@@ -65,7 +99,10 @@ fn main() {
      * and if we are not too recent from the last emerge --sync, call eix-sync
      */
 
-    if !portage::too_recent() {
+    if force {
+        portage::do_eix_sync();
+    }
+    else if !portage::too_recent() {
         portage::do_eix_sync();
     }
 
