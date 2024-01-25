@@ -5,7 +5,7 @@ use std::io::{BufRead, BufReader};
 use std::process::{self, Command};
 
 pub fn system_command(command_line: &str) -> (Result<String, Box<dyn Error>>, i32) {
-    println!(">>> Executing {}", command_line);
+    println!(">>> Executing \"{}\"", command_line);
     let mut command_words = Vec::new();
     for word in command_line.split_whitespace() {
         command_words.push(word);
