@@ -1,4 +1,6 @@
 // Gentoo Updater version 0.07a
+// John Helliwell
+
 const VERSION: &str = "0.07a";
 
 pub mod linux;
