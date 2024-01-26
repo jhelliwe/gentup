@@ -1,7 +1,7 @@
-// Gentoo Updater version 0.07a
+// Gentoo Updater version 0.08a
 // John Helliwell
 
-const VERSION: &str = "0.07a";
+const VERSION: &str = "0.08a";
 
 pub mod linux;
 pub mod portage;
@@ -128,7 +128,7 @@ fn main() {
     // Present a list of packages to be updated to the screen
     // If there are no packages pending updates, we can quit at this stage
     
-    if !portage::eix_diff() {
+    if !portage::eix_diff() && !force {
         process::exit(0);
     }
 
