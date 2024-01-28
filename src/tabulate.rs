@@ -20,13 +20,13 @@ pub fn termsize() -> (usize, usize) {
 pub fn package_list(plist: &Vec<&str>) {
     let spaces: u16 = 4;
     let m = longest(&plist);
-    let (width,_height) = termsize();
+    let (width, _height) = termsize();
     let w = width as u16;
-    let n = w/(m+spaces);
+    let n = w / (m + spaces);
     let mut counter = 0;
     for item in plist {
         print!("{item}    ");
-        for _filler in 0..=(m-(item.len() as u16)) { 
+        for _filler in 0..=(m - (item.len() as u16)) {
             print!(" ");
         }
         counter += 1;

@@ -1,12 +1,12 @@
 use crate::linux;
 use crate::prompt::*;
+use crate::tabulate;
 use crate::PromptType;
 use crate::Upgrade;
-use crate::tabulate;
 use filetime::FileTime;
 use std::fs;
-use std::process;
 use std::io::Write;
+use std::process;
 
 pub fn eix_diff() -> bool {
     let shellout_result = linux::system_command_quiet("eix-diff");
@@ -44,10 +44,6 @@ pub fn eix_diff() -> bool {
                     println!("\n<<< There are {} packages pending updates", num_updates);
                 }
             }
-            /*for item in pending_updates {
-                print!("{}   ", item);
-            }
-            println!();*/
             tabulate::package_list(&pending_updates);
             return true;
         }
@@ -98,7 +94,7 @@ pub fn package_is_missing(package: &str) -> bool {
 //
 pub fn do_eix_sync() {
     println!(">>> Downloading latest package tree - please wait");
-    let shellout_result = linux::system_command("eix-sync -q");
+    let shellout_result = linux::system_command_quiet("eix-sync -q");
     linux::exit_on_failure(&shellout_result);
 }
 
@@ -130,11 +126,22 @@ pub fn upgrade_package(package: &str) {
 
 // This function performs an update of the world set - i.e a full system upgrade
 //
-pub fn upgrade_world() {
-    let shellout_result = linux::system_command(
-        "emerge --quiet -auNDv --with-bdeps y --changed-use --complete-graph @world",
-    );
-    linux::exit_on_failure(&shellout_result);
+pub fn upgrade_world(run_type: Upgrade) {
+    match run_type {
+        Upgrade::Real => {
+            let shellout_result = linux::system_command(
+                "emerge --quiet -uNDv --with-bdeps y --changed-use --complete-graph @world",
+            );
+            linux::exit_on_failure(&shellout_result);
+        }
+        Upgrade::Fetch => {
+            let shellout_result = linux::system_command(
+            "emerge --quiet --fetchonly -uNDv --with-bdeps y --changed-use --complete-graph @world",
+        );
+            linux::exit_on_failure(&shellout_result);
+        }
+        _ => {}
+    }
 }
 
 // This function does a depclean
@@ -181,6 +188,7 @@ pub fn depclean(run_type: Upgrade) -> i32 {
             );
             return 0;
         }
+        _ => 0,
     }
 }
 
@@ -191,7 +199,7 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
             let shellout_result = linux::system_command_quiet("revdep-rebuild -ip");
             linux::exit_on_failure(&shellout_result);
             match shellout_result {
-                (Ok(output),_) => {
+                (Ok(output), _) => {
                     let lines = output.split("\n");
                     for line in lines {
                         println!("{line}");
@@ -200,8 +208,7 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
                         }
                     }
                 }
-                (Err(_),_) => {
-                }
+                (Err(_), _) => {}
             }
             return false;
         }
@@ -214,6 +221,7 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
             );
             return true;
         }
+        _ => false,
     }
 }
 
@@ -238,6 +246,6 @@ pub fn eclean_distfiles() {
 }
 
 pub fn eix_update() {
-    let shellout_result = linux::system_command("eix-update");
+    let shellout_result = linux::system_command_quiet("eix-update");
     linux::exit_on_failure(&shellout_result);
 }
