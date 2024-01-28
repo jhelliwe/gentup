@@ -1,11 +1,12 @@
-// Gentoo Updater version 0.09a
+// Gentoo Updater
 // John Helliwell
 
-const VERSION: &str = "0.09a";
+const VERSION: &str = "0.10a";
 
 pub mod linux;
 pub mod portage;
 pub mod prompt;
+pub mod tabulate;
 use std::env;
 use std::path::Path;
 use std::process;
@@ -106,6 +107,7 @@ fn main() {
      * and if we are not too recent from the last emerge --sync, call eix-sync
      */
 
+    println!(">>> Initialising package database");
     portage::eix_update();
 
     if force {
@@ -135,7 +137,7 @@ fn main() {
     }
 
     // All pre-requisites done - time for upgrade - give user a chance to quit
-    if prompt::ask_user("\n\nReady for upgrade?\t\t", PromptType::Review) {
+    if prompt::ask_user("Ready for upgrade?\t\t", PromptType::Review) {
         portage::upgrade_world();
     }
 

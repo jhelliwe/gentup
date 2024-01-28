@@ -2,6 +2,7 @@ use crate::linux;
 use crate::prompt::*;
 use crate::PromptType;
 use crate::Upgrade;
+use crate::tabulate;
 use filetime::FileTime;
 use std::fs;
 use std::process;
@@ -43,10 +44,11 @@ pub fn eix_diff() -> bool {
                     println!("\n<<< There are {} packages pending updates", num_updates);
                 }
             }
-            for item in pending_updates {
+            /*for item in pending_updates {
                 print!("{}   ", item);
             }
-            println!();
+            println!();*/
+            tabulate::package_list(&pending_updates);
             return true;
         }
         (Err(_), _) => {
@@ -236,6 +238,6 @@ pub fn eclean_distfiles() {
 }
 
 pub fn eix_update() {
-    let shellout_result = linux::system_command_quiet("eix-update");
+    let shellout_result = linux::system_command("eix-update");
     linux::exit_on_failure(&shellout_result);
 }
