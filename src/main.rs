@@ -1,7 +1,7 @@
-// Gentoo Updater version 0.08a
+// Gentoo Updater version 0.09a
 // John Helliwell
 
-const VERSION: &str = "0.08a";
+const VERSION: &str = "0.09a";
 
 pub mod linux;
 pub mod portage;
@@ -105,6 +105,8 @@ fn main() {
     /* Now check the timestamp of the Gentoo package repo to prevent more than one sync per day
      * and if we are not too recent from the last emerge --sync, call eix-sync
      */
+
+    portage::eix_update();
 
     if force {
         portage::do_eix_sync();

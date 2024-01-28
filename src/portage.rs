@@ -234,3 +234,8 @@ pub fn eclean_distfiles() {
     let shellout_result = linux::system_command("eclean -d distfiles");
     linux::exit_on_failure(&shellout_result);
 }
+
+pub fn eix_update() {
+    let shellout_result = linux::system_command_quiet("eix-update");
+    linux::exit_on_failure(&shellout_result);
+}
