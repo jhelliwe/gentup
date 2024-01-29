@@ -69,7 +69,7 @@ pub fn too_recent() -> bool {
     }
 }
 
-// This functions checks that a named package is installed.
+// This function checks that a named package is installed.
 //
 pub fn package_is_missing(package: &str) -> bool {
     print!(".");
@@ -90,7 +90,7 @@ pub fn package_is_missing(package: &str) -> bool {
     }
 }
 
-// This functions updates the package tree metadata for Gentoo Linux
+// This function updates the package tree metadata for Gentoo Linux
 //
 pub fn do_eix_sync() {
     println!(">>> Downloading latest package tree - please wait");
@@ -98,7 +98,7 @@ pub fn do_eix_sync() {
     linux::exit_on_failure(&shellout_result);
 }
 
-// This functions calls eix to check if the named package is due an upgrade
+// This function calls eix to check if the named package is due an upgrade
 //
 pub fn package_outdated(package: &str) -> bool {
     let shellout_result = linux::system_command_quiet(&["eix -u ", package].concat());
@@ -117,7 +117,7 @@ pub fn package_outdated(package: &str) -> bool {
     }
 }
 
-// This functions performs an update of the named package
+// This function performs an update of the named package
 //
 pub fn upgrade_package(package: &str) {
     let shellout_result = linux::system_command(&["emerge --quiet -1av ", package].concat());
@@ -225,20 +225,20 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
     }
 }
 
-// This functions calls the portage sanity checker
+// This function calls the portage sanity checker
 pub fn eix_test_obsolete() {
     println!(">>> Performing portage hygiene tests");
     let shellout_result = linux::system_command("eix-test-obsolete");
     linux::exit_on_failure(&shellout_result);
 }
 
-// This functions cleans up old kernels
+// This function cleans up old kernels
 pub fn eclean_kernel() {
     let shellout_result = linux::system_command("eclean-kernel -Aa");
     linux::exit_on_failure(&shellout_result);
 }
 
-// This functions removes old unused package tarballs
+// This function removes old unused package tarballs
 //
 pub fn eclean_distfiles() {
     let shellout_result = linux::system_command("eclean -d distfiles");
