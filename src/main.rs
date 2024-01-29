@@ -1,7 +1,7 @@
 // Gentoo Updater
 // John Helliwell
 
-const VERSION: &str = "0.11a";
+const VERSION: &str = "0.12a";
 
 pub mod linux;
 pub mod portage;
@@ -25,6 +25,18 @@ pub enum PromptType {
 }
 
 fn main() {
+    match env::var("USER") {
+        Ok(val) => {
+            if val != "root" {
+                eprintln!("You need to be root to run this");
+                process::exit(1);
+            }
+        }
+        Err(_) => {
+            eprintln!("You need to be root to run this");
+            process::exit(1);
+        }
+    }
     let args = env::args();
     let mut force: bool = false;
     let mut cleanup: bool = false;
