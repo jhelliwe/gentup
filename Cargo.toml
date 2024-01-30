@@ -11,6 +11,7 @@ chrono = "0.4.31"
 clearscreen = "2.0.1"
 execute = "0.2.13"
 terminal_size = "0.3.0"
+ansi_term = "0.12.1"
 
 [profile.release]
 lto = true

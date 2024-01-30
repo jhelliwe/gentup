@@ -8,12 +8,14 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-const VERSION: &str = "0.13a";
+const VERSION: &str = "0.14a";
 
+pub mod chevrons;
 pub mod linux;
 pub mod portage;
 pub mod prompt;
 pub mod tabulate;
+use ansi_term::Colour;
 use std::env;
 use std::path::Path;
 use std::process;
@@ -89,7 +91,8 @@ fn main() {
     let _distro =
         linux::check_distro("Gentoo".to_string()).expect("This updater only works on Gentoo Linux");
 
-    print!(">>> Checking environment: ");
+    chevrons::three(Colour::Green);
+    print!("Checking environment: ");
     // We won't get much further if eix is not installed. We must check this
     if !Path::new("/usr/bin/eix").exists() {
         let mut shellout_result = linux::system_command("emerge --quiet -v app-portage/eix");
@@ -107,6 +110,7 @@ fn main() {
     // Check some required (by me) packages are installed. Useful for a just-installed Gentoo
     let packages_to_check = [
         "app-portage/cpuid2cpuflags",
+        "app-portage/elogv",
         "app-portage/pfl",
         "app-portage/ufed",
         "app-admin/eclean-kernel",
@@ -115,6 +119,7 @@ fn main() {
         "app-misc/tmux",
         "net-misc/netkit-telnetd",
         "sys-apps/mlocate",
+        "sys-apps/util-linux",
         "sys-process/nmon",
     ];
     for check in packages_to_check {
@@ -139,7 +144,8 @@ fn main() {
          * and if we are not too recent from the last emerge --sync, call eix-sync
          */
 
-        println!(">>> Initialising package database");
+        chevrons::three(Colour::Green);
+        println!("Initialising package database");
         portage::eix_update();
 
         if force {
@@ -167,14 +173,21 @@ fn main() {
             process::exit(0);
         }
 
-        println!(">>> Fetching sources: ");
+        chevrons::three(Colour::Green);
+        println!("Fetching sources: ");
         portage::upgrade_world(Upgrade::Fetch);
 
         // All pre-requisites done - time for upgrade - give user a chance to quit
         if prompt::ask_user("Ready for upgrade?\t\t", PromptType::Review) {
+            chevrons::three(Colour::Green);
+            println!("Working... Please wait");
             portage::upgrade_world(Upgrade::Real);
         }
     }
+
+    // Displays any messages from package installs to the user
+    portage::elogv();
+
     // List and remove orphaned dependencies
     if portage::depclean(Upgrade::Pretend) != 0 {
         if prompt::ask_user(
@@ -213,5 +226,6 @@ fn main() {
         linux::call_fstrim();
     }
 
-    println!(">>> All done!!!");
+    chevrons::three(Colour::Green);
+    println!("All done!!!");
 }

@@ -1,8 +1,10 @@
+use crate::chevrons;
 use crate::linux;
 use crate::prompt::*;
 use crate::tabulate;
 use crate::PromptType;
 use crate::Upgrade;
+use ansi_term::Colour;
 use filetime::FileTime;
 use std::fs;
 use std::io::Write;
@@ -34,21 +36,26 @@ pub fn eix_diff() -> bool {
             let num_updates = pending_updates.len();
             match num_updates {
                 0 => {
-                    println!("<<< There are no pending updates");
+                    chevrons::three(Colour::Yellow);
+                    println!("There are no pending updates");
                     return false;
                 }
                 1 => {
-                    println!("<<< There is 1 package pending an update");
+                    chevrons::three(Colour::Green);
+                    println!("There is 1 package pending an update");
                 }
                 _ => {
-                    println!("\n<<< There are {} packages pending updates", num_updates);
+                    println!();
+                    chevrons::three(Colour::Green);
+                    println!("There are {} packages pending updates", num_updates);
                 }
             }
             tabulate::package_list(&pending_updates);
             return true;
         }
         (Err(_), _) => {
-            eprintln!("<<< Error calling eix-diff");
+            chevrons::three(Colour::Red);
+            eprintln!("Error calling eix-diff");
             return false;
         }
     }
@@ -62,7 +69,8 @@ pub fn too_recent() -> bool {
     let nowutc = chrono::offset::Utc::now();
     let nowstamp = nowutc.timestamp();
     if nowstamp - filestamp < (24 * 60 * 60) {
-        println!(">>> Last sync was too recent: Skipping sync phase");
+        chevrons::three(Colour::Yellow);
+        println!("Last sync was too recent: Skipping sync phase");
         return true;
     } else {
         return false;
@@ -78,13 +86,17 @@ pub fn package_is_missing(package: &str) -> bool {
     match shellout_result {
         (Ok(_), return_code) => {
             if return_code != 0 {
-                println!("\n<<< {} is not installed", package);
+                println!();
+                chevrons::three(Colour::Yellow);
+                println!("{} is not installed", package);
                 return true;
             }
             false
         }
         (Err(returned_error), _) => {
-            eprintln!("\n<<< Problem running command: {}", returned_error);
+            eprintln!();
+            chevrons::three(Colour::Red);
+            eprintln!("Problem running command: {}", returned_error);
             process::exit(1);
         }
     }
@@ -93,7 +105,8 @@ pub fn package_is_missing(package: &str) -> bool {
 // This function updates the package tree metadata for Gentoo Linux
 //
 pub fn do_eix_sync() {
-    println!(">>> Downloading latest package tree - please wait");
+    chevrons::three(Colour::Green);
+    println!("Downloading latest package tree - please wait");
     let shellout_result = linux::system_command_quiet("eix-sync -q");
     linux::exit_on_failure(&shellout_result);
 }
@@ -107,11 +120,13 @@ pub fn package_outdated(package: &str) -> bool {
             if return_status != 0 {
                 return false;
             }
-            println!("<<< {} needs upgrade", package);
+            chevrons::three(Colour::Yellow);
+            println!("{} needs upgrade", package);
             return true;
         }
         (Err(_), returned_error) => {
-            eprintln!("<<< Command returned {}", returned_error);
+            chevrons::three(Colour::Red);
+            eprintln!("Command returned {}", returned_error);
             process::exit(1);
         }
     }
@@ -136,12 +151,16 @@ pub fn upgrade_world(run_type: Upgrade) {
         }
         Upgrade::Fetch => {
             let shellout_result = linux::system_command(
-            "emerge --quiet --fetchonly -uNDv --with-bdeps y --changed-use --complete-graph @world",
-        );
+                "emerge --fetchonly -uNDv --with-bdeps y --changed-use --complete-graph @world",
+            );
             linux::exit_on_failure(&shellout_result);
         }
         _ => {}
     }
+}
+
+pub fn elogv() {
+    let _shellout_result = linux::system_command("elogv");
 }
 
 // This function does a depclean
@@ -149,7 +168,8 @@ pub fn upgrade_world(run_type: Upgrade) {
 pub fn depclean(run_type: Upgrade) -> i32 {
     match run_type {
         Upgrade::Pretend => {
-            println!(">>> Performing dependency check... Please wait");
+            chevrons::three(Colour::Green);
+            println!("Performing dependency check... Please wait");
             let shellout_result = linux::system_command_quiet("emerge -p --depclean");
             linux::exit_on_failure(&shellout_result);
             match shellout_result {
@@ -195,7 +215,8 @@ pub fn depclean(run_type: Upgrade) -> i32 {
 pub fn revdep_rebuild(run_type: Upgrade) -> bool {
     match run_type {
         Upgrade::Pretend => {
-            println!(">>> Performing reverse dependency check... Please wait");
+            chevrons::three(Colour::Green);
+            println!("Performing reverse dependency check... Please wait");
             let shellout_result = linux::system_command_quiet("revdep-rebuild -ip");
             linux::exit_on_failure(&shellout_result);
             match shellout_result {
@@ -227,7 +248,8 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
 
 // This function calls the portage sanity checker
 pub fn eix_test_obsolete() {
-    println!(">>> Performing portage hygiene tests");
+    chevrons::three(Colour::Green);
+    println!("Performing portage hygiene tests");
     let shellout_result = linux::system_command("eix-test-obsolete");
     linux::exit_on_failure(&shellout_result);
 }

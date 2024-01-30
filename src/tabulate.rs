@@ -26,13 +26,14 @@ pub fn package_list(plist: &Vec<&str>) {
     let mut counter = 0;
     for item in plist {
         print!("{item}    ");
-        for _filler in 0..=(m - (item.len() as u16)) {
-            print!(" ");
-        }
         counter += 1;
         if counter >= n {
             println!();
             counter = 0;
+            continue;
+        }
+        for _filler in 0..=(m - (item.len() as u16)) {
+            print!(" ");
         }
     }
     println!();

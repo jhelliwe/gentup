@@ -1,3 +1,5 @@
+use crate::chevrons;
+use ansi_term::Colour;
 use execute::Execute;
 use std::error::Error;
 use std::fs::File;
@@ -73,7 +75,8 @@ pub fn check_distro(required_distro: String) -> Result<String, String> {
     let parts = firstline.split('=');
     let parts: Vec<&str> = parts.collect();
     let detected_distro = parts[1].to_string();
-    println!(">>> Running on {}: OK", detected_distro);
+    chevrons::three(Colour::Green);
+    println!("Running on {}: OK", detected_distro);
     match required_distro.eq(&detected_distro) {
         true => Ok(detected_distro),
         false => Err(detected_distro),
