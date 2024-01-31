@@ -95,9 +95,7 @@ fn main() {
     print!("Checking environment: ");
     // We won't get much further if eix is not installed. We must check this
     if !Path::new("/usr/bin/eix").exists() {
-        let mut shellout_result = linux::system_command("emerge --quiet -v app-portage/eix");
-        linux::exit_on_failure(&shellout_result);
-        shellout_result = linux::system_command("eix-update");
+        let shellout_result = linux::system_command("emerge --quiet -v app-portage/eix");
         linux::exit_on_failure(&shellout_result);
     }
 
