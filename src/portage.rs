@@ -16,7 +16,7 @@ pub fn eix_diff() -> bool {
     match shellout_result {
         (Ok(output), _) => {
             let mut pending_updates = Vec::new();
-            for line in output.split("\n") {
+            for line in output.split('\n') {
                 if line.starts_with("[U") {
                     let mut words = line.split_whitespace();
                     let mut word: Option<&str> = Some("");
@@ -51,12 +51,12 @@ pub fn eix_diff() -> bool {
                 }
             }
             tabulate::package_list(&pending_updates);
-            return true;
+            true
         }
         (Err(_), _) => {
             chevrons::three(Colour::Red);
             eprintln!("Error calling eix-diff");
-            return false;
+            false
         }
     }
 }
@@ -71,9 +71,9 @@ pub fn too_recent() -> bool {
     if nowstamp - filestamp < (24 * 60 * 60) {
         chevrons::three(Colour::Yellow);
         println!("Last sync was too recent: Skipping sync phase");
-        return true;
+        true
     } else {
-        return false;
+        false
     }
 }
 
@@ -122,7 +122,7 @@ pub fn package_outdated(package: &str) -> bool {
             }
             chevrons::three(Colour::Yellow);
             println!("{} needs upgrade", package);
-            return true;
+            true
         }
         (Err(_), returned_error) => {
             chevrons::three(Colour::Red);
@@ -155,7 +155,7 @@ pub fn upgrade_world(run_type: Upgrade) {
             );
             linux::exit_on_failure(&shellout_result);
         }
-        _ => {}
+        _ => {} // Future expansion
     }
 }
 
@@ -172,31 +172,29 @@ pub fn depclean(run_type: Upgrade) -> i32 {
             println!("Performing dependency check... Please wait");
             let shellout_result = linux::system_command_quiet("emerge -p --depclean");
             linux::exit_on_failure(&shellout_result);
-            match shellout_result {
-                (Ok(output), _) => {
-                    let lines = output.split("\n");
-                    for line in lines {
-                        println!("{line}");
-                        if line.starts_with("Number to remove") {
-                            let mut words = line.split_whitespace();
-                            let mut word: Option<&str> = Some("");
-                            for _counter in 1..=4 {
-                                word = words.next();
+            if let (Ok(output), _) = shellout_result {
+                let lines = output.split('\n');
+                for line in lines {
+                    println!("{line}");
+                    if line.starts_with("Number to remove") {
+                        let mut words = line.split_whitespace();
+                        let mut word: Option<&str> = Some("");
+                        for _counter in 1..=4 {
+                            word = words.next();
+                        }
+                        match word {
+                            Some(word) => {
+                                return word.parse().unwrap();
                             }
-                            match word {
-                                Some(word) => {
-                                    return word.parse().unwrap();
-                                }
-                                None => {
-                                    return 0;
-                                }
+                            None => {
+                                return 0;
                             }
                         }
                     }
                 }
-                (Err(_), _) => {}
             }
-            return 0;
+
+            0
         }
 
         Upgrade::Real => {
@@ -206,7 +204,7 @@ pub fn depclean(run_type: Upgrade) -> i32 {
                 "Please verify the output of emerge --depclean above",
                 PromptType::PressCR,
             );
-            return 0;
+            0
         }
         _ => 0,
     }
@@ -219,19 +217,16 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
             println!("Performing reverse dependency check... Please wait");
             let shellout_result = linux::system_command_quiet("revdep-rebuild -ip");
             linux::exit_on_failure(&shellout_result);
-            match shellout_result {
-                (Ok(output), _) => {
-                    let lines = output.split("\n");
-                    for line in lines {
-                        println!("{line}");
-                        if line.starts_with("Your systen is consistent") {
-                            return true;
-                        }
+            if let (Ok(output), _) = shellout_result {
+                let lines = output.split('\n');
+                for line in lines {
+                    println!("{line}");
+                    if line.starts_with("Your systen is consistent") {
+                        return true;
                     }
                 }
-                (Err(_), _) => {}
             }
-            return false;
+            false
         }
         Upgrade::Real => {
             let shellout_result = linux::system_command("revdep-rebuild");
@@ -240,7 +235,7 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
                 "Please verify the output of revdep-rebuild above",
                 PromptType::PressCR,
             );
-            return true;
+            true
         }
         _ => false,
     }

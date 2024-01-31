@@ -8,7 +8,7 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-const VERSION: &str = "0.14a";
+const VERSION: &str = "0.15a";
 
 pub mod chevrons;
 pub mod linux;
@@ -121,7 +121,7 @@ fn main() {
         "sys-process/nmon",
     ];
     for check in packages_to_check {
-        if portage::package_is_missing(&check) {
+        if portage::package_is_missing(check) {
             println!(
                 "<<< This program requires {} to be installed. Installing...",
                 check
@@ -146,9 +146,7 @@ fn main() {
         println!("Initialising package database");
         portage::eix_update();
 
-        if force {
-            portage::do_eix_sync();
-        } else if !portage::too_recent() {
+        if force || !portage::too_recent() {
             portage::do_eix_sync();
         }
 
@@ -187,20 +185,20 @@ fn main() {
     portage::elogv();
 
     // List and remove orphaned dependencies
-    if portage::depclean(Upgrade::Pretend) != 0 {
-        if prompt::ask_user(
+    if portage::depclean(Upgrade::Pretend) != 0
+        && prompt::ask_user(
             "Perform dependency cleanup as per above?",
             PromptType::Review,
-        ) {
-            portage::depclean(Upgrade::Real);
-        }
+        )
+    {
+        portage::depclean(Upgrade::Real);
     }
 
     // Check reverse dependencies
-    if portage::revdep_rebuild(Upgrade::Pretend) {
-        if prompt::ask_user("Perform reverse dependency rebuild?", PromptType::Review) {
-            portage::revdep_rebuild(Upgrade::Real);
-        }
+    if portage::revdep_rebuild(Upgrade::Pretend)
+        && prompt::ask_user("Perform reverse dependency rebuild?", PromptType::Review)
+    {
+        portage::revdep_rebuild(Upgrade::Real);
     }
 
     // Check Portage sanity

@@ -19,7 +19,7 @@ pub fn termsize() -> (usize, usize) {
 
 pub fn package_list(plist: &Vec<&str>) {
     let spaces: u16 = 4;
-    let m = longest(&plist);
+    let m = longest(plist);
     let (width, _height) = termsize();
     let w = width as u16;
     let n = w / (m + spaces);
@@ -48,5 +48,5 @@ pub fn longest(thelist: &Vec<&str>) -> u16 {
             l = _thislen;
         }
     }
-    return l;
+    l
 }
