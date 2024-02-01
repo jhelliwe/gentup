@@ -8,7 +8,7 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-const VERSION: &str = "0.16a";
+const VERSION: &str = "0.17a";
 
 pub mod chevrons;
 pub mod linux;
@@ -191,10 +191,6 @@ fn main() {
 
     // List and remove orphaned dependencies
     if portage::depclean(Upgrade::Pretend) != 0
-        && prompt::ask_user(
-            "Perform dependency cleanup as per above?",
-            PromptType::Review,
-        )
     {
         portage::depclean(Upgrade::Real);
     }

@@ -166,7 +166,7 @@ pub fn depclean(run_type: Upgrade) -> i32 {
         Upgrade::Pretend => {
             chevrons::three(Color::Green);
             println!("Performing dependency check... Please wait");
-            let shellout_result = linux::system_command_quiet("emerge -p --depclean");
+            let shellout_result = linux::system_command("emerge -p --depclean");
             linux::exit_on_failure(&shellout_result);
             if let (Ok(output), _) = shellout_result {
                 let lines = output.split('\n');
@@ -211,7 +211,7 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
         Upgrade::Pretend => {
             chevrons::three(Color::Green);
             println!("Performing reverse dependency check... Please wait");
-            let shellout_result = linux::system_command_quiet("revdep-rebuild -ip");
+            let shellout_result = linux::system_command("revdep-rebuild -ip");
             linux::exit_on_failure(&shellout_result);
             if let (Ok(output), _) = shellout_result {
                 let lines = output.split('\n');
