@@ -1,14 +1,7 @@
-use crate::chevrons;
-use crate::linux;
-use crate::prompt::*;
-use crate::tabulate;
-use crate::PromptType;
-use crate::Upgrade;
-use ansi_term::Colour;
+use crate::{chevrons, linux, prompt::*, tabulate, PromptType, Upgrade};
+use crossterm::style::Color;
 use filetime::FileTime;
-use std::fs;
-use std::io::Write;
-use std::process;
+use std::{fs, io::Write, process};
 
 pub fn eix_diff() -> bool {
     let shellout_result = linux::system_command_quiet("eix-diff");
@@ -36,17 +29,17 @@ pub fn eix_diff() -> bool {
             let num_updates = pending_updates.len();
             match num_updates {
                 0 => {
-                    chevrons::three(Colour::Yellow);
+                    chevrons::three(Color::Yellow);
                     println!("There are no pending updates");
                     return false;
                 }
                 1 => {
-                    chevrons::three(Colour::Green);
+                    chevrons::three(Color::Green);
                     println!("There is 1 package pending an update");
                 }
                 _ => {
                     println!();
-                    chevrons::three(Colour::Green);
+                    chevrons::three(Color::Green);
                     println!("There are {} packages pending updates", num_updates);
                 }
             }
@@ -54,7 +47,7 @@ pub fn eix_diff() -> bool {
             true
         }
         (Err(_), _) => {
-            chevrons::three(Colour::Red);
+            chevrons::three(Color::Red);
             eprintln!("Error calling eix-diff");
             false
         }
@@ -69,7 +62,7 @@ pub fn too_recent() -> bool {
     let nowutc = chrono::offset::Utc::now();
     let nowstamp = nowutc.timestamp();
     if nowstamp - filestamp < (24 * 60 * 60) {
-        chevrons::three(Colour::Yellow);
+        chevrons::three(Color::Yellow);
         println!("Last sync was too recent: Skipping sync phase");
         true
     } else {
@@ -87,7 +80,7 @@ pub fn package_is_missing(package: &str) -> bool {
         (Ok(_), return_code) => {
             if return_code != 0 {
                 println!();
-                chevrons::three(Colour::Yellow);
+                chevrons::three(Color::Yellow);
                 println!("{} is not installed", package);
                 return true;
             }
@@ -95,7 +88,7 @@ pub fn package_is_missing(package: &str) -> bool {
         }
         (Err(returned_error), _) => {
             eprintln!();
-            chevrons::three(Colour::Red);
+            chevrons::three(Color::Red);
             eprintln!("Problem running command: {}", returned_error);
             process::exit(1);
         }
@@ -105,9 +98,9 @@ pub fn package_is_missing(package: &str) -> bool {
 // This function updates the package tree metadata for Gentoo Linux
 //
 pub fn do_eix_sync() {
-    chevrons::three(Colour::Green);
+    chevrons::three(Color::Green);
     println!("Downloading latest package tree - please wait");
-    let shellout_result = linux::system_command_quiet("eix-sync -q");
+    let shellout_result = linux::system_command("eix-sync");
     linux::exit_on_failure(&shellout_result);
 }
 
@@ -120,12 +113,12 @@ pub fn package_outdated(package: &str) -> bool {
             if return_status != 0 {
                 return false;
             }
-            chevrons::three(Colour::Yellow);
+            chevrons::three(Color::Yellow);
             println!("{} needs upgrade", package);
             true
         }
         (Err(_), returned_error) => {
-            chevrons::three(Colour::Red);
+            chevrons::three(Color::Red);
             eprintln!("Command returned {}", returned_error);
             process::exit(1);
         }
@@ -151,7 +144,7 @@ pub fn upgrade_world(run_type: Upgrade) {
         }
         Upgrade::Fetch => {
             let shellout_result = linux::system_command(
-                "emerge --fetchonly -uNDv --with-bdeps y --changed-use --complete-graph @world",
+                "emerge --quiet --fetchonly -uNDv --with-bdeps y --changed-use --complete-graph @world",
             );
             linux::exit_on_failure(&shellout_result);
         }
@@ -160,7 +153,10 @@ pub fn upgrade_world(run_type: Upgrade) {
 }
 
 pub fn elogv() {
-    let _shellout_result = linux::system_command("elogv");
+    chevrons::three(Color::Green);
+    println!("Checking ELOG files: ");
+    std::io::stdout().flush().unwrap();
+    let _shellout_result = linux::system_command_simple("elogv");
 }
 
 // This function does a depclean
@@ -168,14 +164,14 @@ pub fn elogv() {
 pub fn depclean(run_type: Upgrade) -> i32 {
     match run_type {
         Upgrade::Pretend => {
-            chevrons::three(Colour::Green);
+            chevrons::three(Color::Green);
             println!("Performing dependency check... Please wait");
             let shellout_result = linux::system_command_quiet("emerge -p --depclean");
             linux::exit_on_failure(&shellout_result);
             if let (Ok(output), _) = shellout_result {
                 let lines = output.split('\n');
                 for line in lines {
-                    println!("{line}");
+                    //println!("{line}");
                     if line.starts_with("Number to remove") {
                         let mut words = line.split_whitespace();
                         let mut word: Option<&str> = Some("");
@@ -213,14 +209,13 @@ pub fn depclean(run_type: Upgrade) -> i32 {
 pub fn revdep_rebuild(run_type: Upgrade) -> bool {
     match run_type {
         Upgrade::Pretend => {
-            chevrons::three(Colour::Green);
+            chevrons::three(Color::Green);
             println!("Performing reverse dependency check... Please wait");
             let shellout_result = linux::system_command_quiet("revdep-rebuild -ip");
             linux::exit_on_failure(&shellout_result);
             if let (Ok(output), _) = shellout_result {
                 let lines = output.split('\n');
                 for line in lines {
-                    println!("{line}");
                     if line.starts_with("Your systen is consistent") {
                         return true;
                     }
@@ -243,7 +238,7 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
 
 // This function calls the portage sanity checker
 pub fn eix_test_obsolete() {
-    chevrons::three(Colour::Green);
+    chevrons::three(Color::Green);
     println!("Performing portage hygiene tests");
     let shellout_result = linux::system_command("eix-test-obsolete");
     linux::exit_on_failure(&shellout_result);
@@ -251,14 +246,14 @@ pub fn eix_test_obsolete() {
 
 // This function cleans up old kernels
 pub fn eclean_kernel() {
-    let shellout_result = linux::system_command("eclean-kernel -Aa");
+    let shellout_result = linux::system_command_simple("eclean-kernel -Aa");
     linux::exit_on_failure(&shellout_result);
 }
 
 // This function removes old unused package tarballs
 //
 pub fn eclean_distfiles() {
-    let shellout_result = linux::system_command("eclean -d distfiles");
+    let shellout_result = linux::system_command_simple("eclean -d distfiles");
     linux::exit_on_failure(&shellout_result);
 }
 

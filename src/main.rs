@@ -8,17 +8,19 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-const VERSION: &str = "0.15a";
+const VERSION: &str = "0.16a";
 
 pub mod chevrons;
 pub mod linux;
 pub mod portage;
 pub mod prompt;
 pub mod tabulate;
-use ansi_term::Colour;
-use std::env;
-use std::path::Path;
-use std::process;
+use crossterm::{
+    cursor, execute,
+    style::Color,
+    terminal::{self, ClearType},
+};
+use std::{env, io, path::Path, process};
 
 pub enum Upgrade {
     Real,
@@ -84,24 +86,30 @@ fn main() {
         }
     }
 
-    let _ = clearscreen::clear();
+    let _ignore = execute!(
+        io::stdout(),
+        terminal::Clear(ClearType::All),
+        cursor::MoveTo(0, 0)
+    );
+
     println!("\nWelcome to the Gentoo Updater v{}\n", VERSION);
 
     // Are we running on Gentoo?
     let _distro =
         linux::check_distro("Gentoo".to_string()).expect("This updater only works on Gentoo Linux");
 
-    chevrons::three(Colour::Green);
+    chevrons::three(Color::Green);
     print!("Checking environment: ");
     // We won't get much further if eix is not installed. We must check this
     if !Path::new("/usr/bin/eix").exists() {
-        let shellout_result = linux::system_command("emerge --quiet -v app-portage/eix");
+        let shellout_result = linux::system_command_simple("emerge --quiet -v app-portage/eix");
         linux::exit_on_failure(&shellout_result);
     }
 
     // We won't get much further if equery is not installed. We must check this too
     if !Path::new("/usr/bin/equery").exists() {
-        let shellout_result = linux::system_command("emerge --quiet -v app-portage/gentoolkit");
+        let shellout_result =
+            linux::system_command_simple("emerge --quiet -v app-portage/gentoolkit");
         linux::exit_on_failure(&shellout_result);
     }
 
@@ -131,7 +139,7 @@ fn main() {
                 check,
             ]
             .concat();
-            let shellout_result = linux::system_command(&cmdline);
+            let shellout_result = linux::system_command_simple(&cmdline);
             linux::exit_on_failure(&shellout_result);
         }
     }
@@ -142,7 +150,7 @@ fn main() {
          * and if we are not too recent from the last emerge --sync, call eix-sync
          */
 
-        chevrons::three(Colour::Green);
+        chevrons::three(Color::Green);
         println!("Initialising package database");
         portage::eix_update();
 
@@ -168,17 +176,14 @@ fn main() {
         if !portage::eix_diff() && !force {
             process::exit(0);
         }
+        prompt::ask_user("Please review", PromptType::PressCR);
 
-        chevrons::three(Colour::Green);
+        chevrons::three(Color::Green);
         println!("Fetching sources: ");
         portage::upgrade_world(Upgrade::Fetch);
 
-        // All pre-requisites done - time for upgrade - give user a chance to quit
-        if prompt::ask_user("Ready for upgrade?\t\t", PromptType::Review) {
-            chevrons::three(Colour::Green);
-            println!("Working... Please wait");
-            portage::upgrade_world(Upgrade::Real);
-        }
+        // All pre-requisites done - time for upgrade
+        portage::upgrade_world(Upgrade::Real);
     }
 
     // Displays any messages from package installs to the user
@@ -222,6 +227,6 @@ fn main() {
         linux::call_fstrim();
     }
 
-    chevrons::three(Colour::Green);
+    chevrons::three(Color::Green);
     println!("All done!!!");
 }
