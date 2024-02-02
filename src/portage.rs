@@ -97,11 +97,7 @@ pub fn package_is_missing(package: &str) -> bool {
 // This function updates the package tree metadata for Gentoo Linux
 //
 pub fn do_eix_sync() {
-    let shellout_result =
-        linux::system_command_non_interactive(
-            "eix-sync", 
-            "Syncing package tree"
-            );
+    let shellout_result = linux::system_command_non_interactive("eix-sync", "Syncing package tree");
     linux::exit_on_failure(&shellout_result);
 }
 
@@ -160,10 +156,7 @@ pub fn upgrade_world(run_type: Upgrade) {
 
 pub fn elogv() {
     let _shellout_result =
-        linux::system_command_interactive(
-            "elogv", 
-            "Checking for new ebuild logs"
-            );
+        linux::system_command_interactive("elogv", "Checking for new ebuild logs");
 }
 
 // This function does a depclean
@@ -237,7 +230,7 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
                 let lines = output.split('\n');
                 for line in lines {
                     if line.starts_with("Your system is consistent") {
-                        chevrons::eerht(Color::Green);
+                        chevrons::eerht(Color::Blue);
                         println!("No broken reverse dependencies were found");
                         return true;
                     }
@@ -266,20 +259,14 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
 // This function calls the portage sanity checker
 pub fn eix_test_obsolete() {
     let shellout_result =
-        linux::system_command_non_interactive(
-            "eix-test-obsolete", 
-            "Checking obsolete configs"
-            );
+        linux::system_command_non_interactive("eix-test-obsolete", "Checking obsolete configs");
     linux::exit_on_failure(&shellout_result);
 }
 
 // This function cleans up old kernels
 pub fn eclean_kernel() {
     let shellout_result =
-        linux::system_command_interactive(
-            "eclean-kernel -Aa", 
-            "Cleaning old kernels"
-            );
+        linux::system_command_interactive("eclean-kernel -Aa", "Cleaning old kernels");
     linux::exit_on_failure(&shellout_result);
 }
 
@@ -287,10 +274,7 @@ pub fn eclean_kernel() {
 //
 pub fn eclean_distfiles() {
     let shellout_result =
-        linux::system_command_interactive(
-            "eclean -d distfiles", 
-            "Cleaning unused distfiles"
-            );
+        linux::system_command_interactive("eclean -d distfiles", "Cleaning unused distfiles");
     linux::exit_on_failure(&shellout_result);
 }
 
@@ -304,6 +288,13 @@ pub fn handle_news() -> u32 {
     linux::exit_on_failure(&shellout_result);
     if let (Ok(output), _) = shellout_result {
         count = output.trim().parse().unwrap_or(0);
+        if count == 0 {
+            chevrons::eerht(Color::Blue);
+            println!("No news is good news")
+        } else {
+            chevrons::eerht(Color::Red);
+            println!("You have {} news item(s) to read", count);
+        }
     }
     count
 }

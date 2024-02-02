@@ -8,7 +8,7 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-const VERSION: &str = "0.18a";
+const VERSION: &str = "0.19a";
 
 pub mod chevrons;
 pub mod linux;
@@ -201,6 +201,8 @@ fn main() {
 
         portage::upgrade_world(Upgrade::Fetch);
 
+        chevrons::three(Color::Green);
+        println!("Checking Gentoo news");
         if portage::handle_news() > 0 {
             chevrons::three(Color::Red);
             println!("Attention: You have unread news");
@@ -209,6 +211,14 @@ fn main() {
 
         // All pre-requisites done - time for upgrade
         portage::upgrade_world(Upgrade::Real);
+    }
+
+    chevrons::three(Color::Green);
+    println!("Rechecking Gentoo news");
+    if portage::handle_news() > 0 {
+        chevrons::three(Color::Red);
+        println!("Attention: You have unread news");
+        prompt::ask_user("Press CR", PromptType::PressCR);
     }
 
     // Displays any messages from package installs to the user

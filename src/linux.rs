@@ -91,10 +91,7 @@ pub fn system_command_quiet(command_line: &str) -> (Result<String, Box<dyn Error
 }
 
 pub fn call_fstrim() {
-    let shellout_results = system_command_non_interactive(
-        "fstrim -a -v", 
-        "Trimming filesystems"
-        );
+    let shellout_results = system_command_non_interactive("fstrim -a -v", "Trimming filesystems");
     exit_on_failure(&shellout_results);
 }
 
