@@ -1,4 +1,4 @@
-use crate::{chevrons, linux, prompt::*, tabulate, PromptType, Upgrade};
+use crate::{chevrons, linux, prompt::{self, ask_user}, tabulate, PromptType, Upgrade};
 use crossterm::style::Color;
 use filetime::FileTime;
 use std::{fs, io::Write, process};
@@ -169,6 +169,7 @@ pub fn depclean(run_type: Upgrade) -> i32 {
                 "Checking for orphaned dependencies",
             );
             linux::exit_on_failure(&shellout_result);
+            prompt::dots(5);
             if let (Ok(output), _) = shellout_result {
                 let lines = output.split('\n');
                 for line in lines {
@@ -208,6 +209,7 @@ pub fn depclean(run_type: Upgrade) -> i32 {
                 "Removing orphaned dependencies",
             );
             linux::exit_on_failure(&shellout_result);
+            prompt::dots(5);
             ask_user(
                 "Please verify the output of emerge --depclean above",
                 PromptType::PressCR,
@@ -226,6 +228,7 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
                 "Checking reverse dependencies",
             );
             linux::exit_on_failure(&shellout_result);
+            prompt::dots(5);
             if let (Ok(output), _) = shellout_result {
                 let lines = output.split('\n');
                 for line in lines {
@@ -246,6 +249,7 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
                 "Rebuilding reverse dependencies",
             );
             linux::exit_on_failure(&shellout_result);
+            prompt::dots(5);
             ask_user(
                 "Please verify the output of revdep-rebuild above",
                 PromptType::PressCR,
@@ -261,6 +265,7 @@ pub fn eix_test_obsolete() {
     let shellout_result =
         linux::system_command_non_interactive("eix-test-obsolete", "Checking obsolete configs");
     linux::exit_on_failure(&shellout_result);
+    prompt::dots(5);
 }
 
 // This function cleans up old kernels

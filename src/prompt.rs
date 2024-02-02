@@ -4,7 +4,11 @@ use crossterm::{
     style::Color,
     terminal::{self, ClearType},
 };
-use std::{io, process};
+use std::{
+    io::{self, Write},
+    process,
+    time::Duration,
+};
 
 pub fn ask_user(userinput: &str, mode: crate::PromptType) -> bool {
     if mode == ClearScreen {
@@ -42,4 +46,13 @@ pub fn ask_user(userinput: &str, mode: crate::PromptType) -> bool {
         return false;
     }
     true
+}
+
+pub fn dots(manydots: i32) {
+    for _counter in 0..=manydots {
+        print!(".");
+        std::thread::sleep(Duration::from_millis(1000));
+        std::io::stdout().flush().unwrap();
+    }
+    println!();
 }
