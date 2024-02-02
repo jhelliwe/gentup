@@ -1,27 +1,20 @@
-use crate::{chevrons, prompt, PromptType};
+use crate::chevrons;
 use crossterm::{
-    cursor, execute,
-    style::Color,
-    terminal::{self, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
+    execute,
+    style::{Color, SetForegroundColor},
 };
 use execute::Execute;
 use std::{
     error::Error,
-    fs::File,
+    fs::{self, File},
     io::{self, BufRead, BufReader},
     process::{self, Command},
-    time::Duration,
 };
 
-pub fn system_command(command_line: &str) -> (Result<String, Box<dyn Error>>, i32) {
-    std::thread::sleep(Duration::from_millis(2000));
-    let _ignore = execute!(io::stdout(), EnterAlternateScreen);
-    let _ignore = execute!(
-        io::stdout(),
-        cursor::SavePosition,
-        terminal::Clear(ClearType::All),
-        cursor::MoveTo(0, 0)
-    );
+pub fn system_command_non_interactive(
+    command_line: &str,
+    status: &str,
+) -> (Result<String, Box<dyn Error>>, i32) {
     let mut command_words = Vec::new();
     for word in command_line.split_whitespace() {
         command_words.push(word);
@@ -31,20 +24,30 @@ pub fn system_command(command_line: &str) -> (Result<String, Box<dyn Error>>, i3
         command.arg(argument);
     }
     chevrons::three(Color::Green);
-    println!("Working... ({})", command_line);
-    let results = command.execute_output();
-    prompt::ask_user("Please review above output?\t\t", PromptType::PressCR);
-    let _ignore = execute!(io::stdout(), LeaveAlternateScreen, cursor::RestorePosition);
+    print!("{}: ", status);
+    let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Cyan));
+    println!("{}", command_line);
+    let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Grey));
+    let mut command2 = Command::new("tee");
+    command2.arg("/tmp/output");
+    let results = command.execute_multiple_output(&mut [&mut command2]);
     match results {
-        Ok(output) => (
-            Ok(String::from_utf8_lossy(&output.stdout).to_string()),
-            output.status.code().unwrap(),
-        ),
+        Ok(output) => {
+            let contents = fs::read_to_string("/tmp/output");
+            if let Ok(contents) = contents {
+                (Ok(contents), output.status.code().unwrap())
+            } else {
+                (Ok("".to_string()), output.status.code().unwrap())
+            }
+        }
         Err(errors) => (Err(Box::new(errors)), 1),
     }
 }
 
-pub fn system_command_simple(command_line: &str) -> (Result<String, Box<dyn Error>>, i32) {
+pub fn system_command_interactive(
+    command_line: &str,
+    status: &str,
+) -> (Result<String, Box<dyn Error>>, i32) {
     let mut command_words = Vec::new();
     for word in command_line.split_whitespace() {
         command_words.push(word);
@@ -53,6 +56,11 @@ pub fn system_command_simple(command_line: &str) -> (Result<String, Box<dyn Erro
     for argument in command_words.iter().skip(1) {
         command.arg(argument);
     }
+    chevrons::three(Color::Green);
+    print!("{}: ", status);
+    let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Cyan));
+    println!("{}", command_line);
+    let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Grey));
     let results = command.execute_output();
     match results {
         Ok(output) => (
@@ -83,7 +91,10 @@ pub fn system_command_quiet(command_line: &str) -> (Result<String, Box<dyn Error
 }
 
 pub fn call_fstrim() {
-    let shellout_results = system_command_simple("fstrim -a -v");
+    let shellout_results = system_command_non_interactive(
+        "fstrim -a -v", 
+        "Trimming filesystems"
+        );
     exit_on_failure(&shellout_results);
 }
 
@@ -91,12 +102,14 @@ pub fn exit_on_failure(shellout_result: &(Result<String, Box<dyn Error>>, i32)) 
     match shellout_result {
         (Ok(_), status) => {
             if *status != 0 {
-                eprintln!("<<< The command had a non zero exit status. Please check.");
+                chevrons::eerht(Color::Red);
+                eprintln!("The command had a non zero exit status. Please check.");
                 process::exit(1);
             }
         }
         (Err(errors), _) => {
-            eprintln!("<<< There was a problem executing the command: {}", errors);
+            chevrons::eerht(Color::Red);
+            eprintln!("There was a problem executing the command: {}", errors);
             process::exit(1);
         }
     }

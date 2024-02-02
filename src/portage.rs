@@ -29,17 +29,16 @@ pub fn eix_diff() -> bool {
             let num_updates = pending_updates.len();
             match num_updates {
                 0 => {
-                    chevrons::three(Color::Yellow);
+                    chevrons::three(Color::Blue);
                     println!("There are no pending updates");
                     return false;
                 }
                 1 => {
-                    chevrons::three(Color::Green);
+                    chevrons::three(Color::Yellow);
                     println!("There is 1 package pending an update");
                 }
                 _ => {
-                    println!();
-                    chevrons::three(Color::Green);
+                    chevrons::three(Color::Yellow);
                     println!("There are {} packages pending updates", num_updates);
                 }
             }
@@ -98,9 +97,11 @@ pub fn package_is_missing(package: &str) -> bool {
 // This function updates the package tree metadata for Gentoo Linux
 //
 pub fn do_eix_sync() {
-    chevrons::three(Color::Green);
-    println!("Downloading latest package tree - please wait");
-    let shellout_result = linux::system_command("eix-sync");
+    let shellout_result =
+        linux::system_command_non_interactive(
+            "eix-sync", 
+            "Syncing package tree"
+            );
     linux::exit_on_failure(&shellout_result);
 }
 
@@ -128,7 +129,10 @@ pub fn package_outdated(package: &str) -> bool {
 // This function performs an update of the named package
 //
 pub fn upgrade_package(package: &str) {
-    let shellout_result = linux::system_command(&["emerge --quiet -1av ", package].concat());
+    let shellout_result = linux::system_command_interactive(
+        &["emerge --quiet -1av ", package].concat(),
+        "Upgrading package",
+    );
     linux::exit_on_failure(&shellout_result);
 }
 
@@ -137,14 +141,16 @@ pub fn upgrade_package(package: &str) {
 pub fn upgrade_world(run_type: Upgrade) {
     match run_type {
         Upgrade::Real => {
-            let shellout_result = linux::system_command(
+            let shellout_result = linux::system_command_interactive(
                 "emerge --quiet -uNDv --with-bdeps y --changed-use --complete-graph @world",
+                "Updating world set",
             );
             linux::exit_on_failure(&shellout_result);
         }
         Upgrade::Fetch => {
-            let shellout_result = linux::system_command(
+            let shellout_result = linux::system_command_non_interactive(
                 "emerge --quiet --fetchonly -uNDv --with-bdeps y --changed-use --complete-graph @world",
+                "Fetching sources",
             );
             linux::exit_on_failure(&shellout_result);
         }
@@ -153,10 +159,11 @@ pub fn upgrade_world(run_type: Upgrade) {
 }
 
 pub fn elogv() {
-    chevrons::three(Color::Green);
-    println!("Checking ELOG files: ");
-    std::io::stdout().flush().unwrap();
-    let _shellout_result = linux::system_command_simple("elogv");
+    let _shellout_result =
+        linux::system_command_interactive(
+            "elogv", 
+            "Checking for new ebuild logs"
+            );
 }
 
 // This function does a depclean
@@ -164,25 +171,34 @@ pub fn elogv() {
 pub fn depclean(run_type: Upgrade) -> i32 {
     match run_type {
         Upgrade::Pretend => {
-            chevrons::three(Color::Green);
-            println!("Performing dependency check... Please wait");
-            let shellout_result = linux::system_command("emerge -p --depclean");
+            let shellout_result = linux::system_command_non_interactive(
+                "emerge -p --depclean",
+                "Checking for orphaned dependencies",
+            );
             linux::exit_on_failure(&shellout_result);
             if let (Ok(output), _) = shellout_result {
                 let lines = output.split('\n');
                 for line in lines {
-                    //println!("{line}");
                     if line.starts_with("Number to remove") {
                         let mut words = line.split_whitespace();
                         let mut word: Option<&str> = Some("");
-                        for _counter in 1..=4 {
+                        for _counter in 0..=3 {
                             word = words.next();
                         }
                         match word {
                             Some(word) => {
-                                return word.parse().unwrap();
+                                let numdep = word.parse().unwrap();
+                                if numdep == 0 {
+                                    chevrons::eerht(Color::Blue);
+                                } else {
+                                    chevrons::eerht(Color::Yellow);
+                                }
+                                println!("Found {} dependencies to clean", numdep);
+                                return numdep;
                             }
                             None => {
+                                chevrons::eerht(Color::Green);
+                                println!("There are no orphamed dependencies");
                                 return 0;
                             }
                         }
@@ -194,7 +210,10 @@ pub fn depclean(run_type: Upgrade) -> i32 {
         }
 
         Upgrade::Real => {
-            let shellout_result = linux::system_command("emerge --depclean");
+            let shellout_result = linux::system_command_interactive(
+                "emerge --depclean",
+                "Removing orphaned dependencies",
+            );
             linux::exit_on_failure(&shellout_result);
             ask_user(
                 "Please verify the output of emerge --depclean above",
@@ -209,22 +228,30 @@ pub fn depclean(run_type: Upgrade) -> i32 {
 pub fn revdep_rebuild(run_type: Upgrade) -> bool {
     match run_type {
         Upgrade::Pretend => {
-            chevrons::three(Color::Green);
-            println!("Performing reverse dependency check... Please wait");
-            let shellout_result = linux::system_command("revdep-rebuild -ip");
+            let shellout_result = linux::system_command_non_interactive(
+                "revdep-rebuild -ip",
+                "Checking reverse dependencies",
+            );
             linux::exit_on_failure(&shellout_result);
             if let (Ok(output), _) = shellout_result {
                 let lines = output.split('\n');
                 for line in lines {
-                    if line.starts_with("Your systen is consistent") {
+                    if line.starts_with("Your system is consistent") {
+                        chevrons::eerht(Color::Green);
+                        println!("No broken reverse dependencies were found");
                         return true;
                     }
                 }
             }
+            chevrons::eerht(Color::Red);
+            println!("Broken reverse dependencies were found. Initiating revdep-rebuild");
             false
         }
         Upgrade::Real => {
-            let shellout_result = linux::system_command("revdep-rebuild");
+            let shellout_result = linux::system_command_interactive(
+                "revdep-rebuild",
+                "Rebuilding reverse dependencies",
+            );
             linux::exit_on_failure(&shellout_result);
             ask_user(
                 "Please verify the output of revdep-rebuild above",
@@ -238,26 +265,45 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
 
 // This function calls the portage sanity checker
 pub fn eix_test_obsolete() {
-    chevrons::three(Color::Green);
-    println!("Performing portage hygiene tests");
-    let shellout_result = linux::system_command("eix-test-obsolete");
+    let shellout_result =
+        linux::system_command_non_interactive(
+            "eix-test-obsolete", 
+            "Checking obsolete configs"
+            );
     linux::exit_on_failure(&shellout_result);
 }
 
 // This function cleans up old kernels
 pub fn eclean_kernel() {
-    let shellout_result = linux::system_command_simple("eclean-kernel -Aa");
+    let shellout_result =
+        linux::system_command_interactive(
+            "eclean-kernel -Aa", 
+            "Cleaning old kernels"
+            );
     linux::exit_on_failure(&shellout_result);
 }
 
 // This function removes old unused package tarballs
 //
 pub fn eclean_distfiles() {
-    let shellout_result = linux::system_command_simple("eclean -d distfiles");
+    let shellout_result =
+        linux::system_command_interactive(
+            "eclean -d distfiles", 
+            "Cleaning unused distfiles"
+            );
     linux::exit_on_failure(&shellout_result);
 }
 
 pub fn eix_update() {
     let shellout_result = linux::system_command_quiet("eix-update");
     linux::exit_on_failure(&shellout_result);
+}
+pub fn handle_news() -> u32 {
+    let mut count: u32 = 0;
+    let shellout_result = linux::system_command_quiet("eselect news count new");
+    linux::exit_on_failure(&shellout_result);
+    if let (Ok(output), _) = shellout_result {
+        count = output.trim().parse().unwrap_or(0);
+    }
+    count
 }

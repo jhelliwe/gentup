@@ -1,10 +1,10 @@
+use crossterm::terminal::size;
 use std::process;
-use terminal_size::{terminal_size, Height, Width};
 
 pub fn termsize() -> (usize, usize) {
     let mut session_width: usize = 0;
     let mut session_height: usize = 0;
-    if let Some((Width(w), Height(h))) = terminal_size() {
+    if let Ok((w, h)) = size() {
         session_width = w as usize;
         session_height = h as usize;
     } else {
@@ -18,6 +18,7 @@ pub fn termsize() -> (usize, usize) {
 }
 
 pub fn package_list(plist: &Vec<&str>) {
+    println!();
     let spaces: u16 = 4;
     let m = longest(plist);
     let (width, _height) = termsize();
@@ -36,6 +37,7 @@ pub fn package_list(plist: &Vec<&str>) {
             print!(" ");
         }
     }
+    println!();
     println!();
 }
 

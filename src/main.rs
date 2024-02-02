@@ -8,19 +8,15 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-const VERSION: &str = "0.17a";
+const VERSION: &str = "0.18a";
 
 pub mod chevrons;
 pub mod linux;
 pub mod portage;
 pub mod prompt;
 pub mod tabulate;
-use crossterm::{
-    cursor, execute,
-    style::Color,
-    terminal::{self, ClearType},
-};
-use std::{env, io, path::Path, process};
+use crossterm::style::Color;
+use std::{env, path::Path, process};
 
 pub enum Upgrade {
     Real,
@@ -86,11 +82,29 @@ fn main() {
         }
     }
 
+    /*let _ignore = execute!(
+        io::stdout(),
+        terminal::Clear(ClearType::All),
+        cursor::MoveTo(0, 0)
+    );
+
+    let _ignore = execute!(
+        io::stdout(),
+        terminal::EnterAlternateScreen,
+        );
+
     let _ignore = execute!(
         io::stdout(),
         terminal::Clear(ClearType::All),
         cursor::MoveTo(0, 0)
     );
+
+    let _ignore = execute!(
+        io::stdout(),
+        terminal::LeaveAlternateScreen,
+        );*/
+
+    let _ignore = linux::system_command_interactive("clear", "clear");
 
     println!("\nWelcome to the Gentoo Updater v{}\n", VERSION);
 
@@ -102,14 +116,19 @@ fn main() {
     print!("Checking environment: ");
     // We won't get much further if eix is not installed. We must check this
     if !Path::new("/usr/bin/eix").exists() {
-        let shellout_result = linux::system_command_simple("emerge --quiet -v app-portage/eix");
+        let shellout_result = linux::system_command_non_interactive(
+            "emerge --quiet -v app-portage/eix",
+            "Installing eix",
+        );
         linux::exit_on_failure(&shellout_result);
     }
 
     // We won't get much further if equery is not installed. We must check this too
     if !Path::new("/usr/bin/equery").exists() {
-        let shellout_result =
-            linux::system_command_simple("emerge --quiet -v app-portage/gentoolkit");
+        let shellout_result = linux::system_command_non_interactive(
+            "emerge --quiet -v app-portage/gentoolkit",
+            "Installing gentoolkit",
+        );
         linux::exit_on_failure(&shellout_result);
     }
 
@@ -130,8 +149,9 @@ fn main() {
     ];
     for check in packages_to_check {
         if portage::package_is_missing(check) {
+            chevrons::eerht(Color::Red);
             println!(
-                "<<< This program requires {} to be installed. Installing...",
+                "This program requires {} to be installed. Installing...",
                 check
             );
             let cmdline = [
@@ -139,7 +159,8 @@ fn main() {
                 check,
             ]
             .concat();
-            let shellout_result = linux::system_command_simple(&cmdline);
+            let shellout_result =
+                linux::system_command_interactive(&cmdline, "Installing missing package");
             linux::exit_on_failure(&shellout_result);
         }
     }
@@ -178,9 +199,13 @@ fn main() {
         }
         prompt::ask_user("Please review", PromptType::PressCR);
 
-        chevrons::three(Color::Green);
-        println!("Fetching sources: ");
         portage::upgrade_world(Upgrade::Fetch);
+
+        if portage::handle_news() > 0 {
+            chevrons::three(Color::Red);
+            println!("Attention: You have unread news");
+            prompt::ask_user("Press CR", PromptType::PressCR);
+        }
 
         // All pre-requisites done - time for upgrade
         portage::upgrade_world(Upgrade::Real);
@@ -190,13 +215,12 @@ fn main() {
     portage::elogv();
 
     // List and remove orphaned dependencies
-    if portage::depclean(Upgrade::Pretend) != 0
-    {
+    if portage::depclean(Upgrade::Pretend) != 0 {
         portage::depclean(Upgrade::Real);
     }
 
     // Check reverse dependencies
-    if portage::revdep_rebuild(Upgrade::Pretend)
+    if !portage::revdep_rebuild(Upgrade::Pretend)
         && prompt::ask_user("Perform reverse dependency rebuild?", PromptType::Review)
     {
         portage::revdep_rebuild(Upgrade::Real);

@@ -41,7 +41,5 @@ pub fn ask_user(userinput: &str, mode: crate::PromptType) -> bool {
         println!("Skipping at user request");
         return false;
     }
-    chevrons::three(Color::Green);
-    println!("Acknowledged");
     true
 }
