@@ -11,6 +11,8 @@ use std::{
     process::{self, Command},
 };
 
+// This function executes "command_line" in a thread, while stdin and stdout are piped to "tee"
+// The output from the command is returned as a String so the caller can parse the output
 pub fn system_command_non_interactive(
     command_line: &str,
     status: &str,
@@ -44,6 +46,9 @@ pub fn system_command_non_interactive(
     }
 }
 
+// This function executes "command_line", with stdin, stdout and stderr untouched, so the user can
+// interact with the command. Although it returns a string with the stdout of the command, it is
+// never captured, so will be an empty string.
 pub fn system_command_interactive(
     command_line: &str,
     status: &str,
@@ -71,6 +76,8 @@ pub fn system_command_interactive(
     }
 }
 
+// This function executes "command_line", with stdin, stdout and stderr sent to /dev/null
+// returning the output as a String
 pub fn system_command_quiet(command_line: &str) -> (Result<String, Box<dyn Error>>, i32) {
     let mut command_words = Vec::new();
     for word in command_line.split_whitespace() {
@@ -95,6 +102,8 @@ pub fn call_fstrim() {
     exit_on_failure(&shellout_results);
 }
 
+// This function takes the result from the last system command execution and exits if there was a
+// failure running the previous command
 pub fn exit_on_failure(shellout_result: &(Result<String, Box<dyn Error>>, i32)) {
     match shellout_result {
         (Ok(_), status) => {
@@ -112,6 +121,8 @@ pub fn exit_on_failure(shellout_result: &(Result<String, Box<dyn Error>>, i32)) 
     }
 }
 
+// Returns the name of the Linux distro we are running on. I don't actually check this IS Linux,
+// because there is only me using it, and I'm not likely to run this on a Windows box etc
 pub fn check_distro(required_distro: String) -> Result<String, String> {
     let os_release = File::open("/etc/os-release").expect("/etc/os-release should be readable!");
     let readbuf = BufReader::new(os_release);

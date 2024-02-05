@@ -8,7 +8,7 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-const VERSION: &str = "0.20a";
+const VERSION: &str = "0.21a";
 
 pub mod chevrons;
 pub mod linux;
@@ -32,6 +32,7 @@ pub enum PromptType {
 }
 
 fn main() {
+    // Check we are root
     match env::var("USER") {
         Ok(val) => {
             if val != "root" {
@@ -44,10 +45,12 @@ fn main() {
             process::exit(1);
         }
     }
+    // Parse command line arguments
     let args = env::args();
-    let mut force: bool = false;
-    let mut cleanup: bool = false;
+    let mut force = false;
+    let mut cleanup = false;
     let mut first = true;
+    let mut background = true;
     for arg in args {
         if first {
             first = false;
@@ -58,10 +61,11 @@ fn main() {
                 println!("Usage:\n\n \
                     gentup [options]\n \
                     Options:\n\n\
-                    -c, --cleanup  Only perform cleanup, useful if you interupped the previous run\n\
-                    -f, --force    Force eix-sync, bypassing the timestamp check\n\
-                    -h, --help     Display this help text, then exit\n\
-                    -V, --version  Display the program version\
+                    -c, --cleanup    Only perform cleanup, useful if you interupped the previous run\n\
+                    -f, --force      Force eix-sync, bypassing the timestamp check\n\
+                    -s  --separate   Perform source fetching separately before update\n\
+                    -h, --help       Display this help text, then exit\n\
+                    -V, --version    Display the program version\
                 ");
                 process::exit(0);
             }
@@ -72,48 +76,31 @@ fn main() {
             "-f" | "--force" => {
                 force = true;
             }
+            "-s" | "--separate" => {
+                background = true;
+            }
             "-c" | "--cleanup" => {
                 cleanup = true;
             }
             _ => {
-                eprintln!("Error: usage - gentup [--help|--force|--cleanup|--version]");
+                eprintln!("Error: usage - gentup [--help|--force|--separate|--cleanup|--version]");
                 process::exit(1);
             }
         }
     }
 
-    /*let _ignore = execute!(
-        io::stdout(),
-        terminal::Clear(ClearType::All),
-        cursor::MoveTo(0, 0)
-    );
-
-    let _ignore = execute!(
-        io::stdout(),
-        terminal::EnterAlternateScreen,
-        );
-
-    let _ignore = execute!(
-        io::stdout(),
-        terminal::Clear(ClearType::All),
-        cursor::MoveTo(0, 0)
-    );
-
-    let _ignore = execute!(
-        io::stdout(),
-        terminal::LeaveAlternateScreen,
-        );*/
-
+    // Get started
     let _ignore = linux::system_command_interactive("clear", "clear");
-
     println!("\nWelcome to the Gentoo Updater v{}\n", VERSION);
 
     // Are we running on Gentoo?
     let _distro =
         linux::check_distro("Gentoo".to_string()).expect("This updater only works on Gentoo Linux");
 
+    // Check things are installed
     chevrons::three(Color::Green);
     print!("Checking environment: ");
+
     // We won't get much further if eix is not installed. We must check this
     if !Path::new("/usr/bin/eix").exists() {
         let shellout_result = linux::system_command_non_interactive(
@@ -167,14 +154,13 @@ fn main() {
     println!(" OK");
 
     if !cleanup {
-        /* Now check the timestamp of the Gentoo package repo to prevent more than one sync per day
-         * and if we are not too recent from the last emerge --sync, call eix-sync
-         */
-
+        // Only do update tasks if the user did not select cleanup mode
+        // Make sure the eix database is up to date
         chevrons::three(Color::Green);
         println!("Initialising package database");
         portage::eix_update();
 
+        // Check if the last resync was too recent - if not, sync the portage tree
         if force || !portage::too_recent() {
             portage::do_eix_sync();
         }
@@ -199,8 +185,12 @@ fn main() {
         }
         prompt::ask_user("Please review", PromptType::PressCR);
 
-        portage::upgrade_world(Upgrade::Fetch);
+        // Fetch sources
+        if ! background {
+            portage::upgrade_world(Upgrade::Fetch);
+        }
 
+        // Check the news - if there is news, list and read it
         chevrons::three(Color::Green);
         println!("Checking Gentoo news");
         if portage::handle_news() > 0 {
@@ -211,14 +201,20 @@ fn main() {
 
         // All pre-requisites done - time for upgrade
         portage::upgrade_world(Upgrade::Real);
+
+        // Handle updating package config files
+        portage::dispatch_conf();
     }
 
-    chevrons::three(Color::Green);
-    println!("Rechecking Gentoo news");
-    if portage::handle_news() > 0 {
-        chevrons::three(Color::Red);
-        println!("Attention: You have unread news");
-        prompt::ask_user("Press CR", PromptType::PressCR);
+    // Special case for cleanup mode - handle news here too.
+    if cleanup {
+        chevrons::three(Color::Green);
+        println!("Rechecking Gentoo news");
+        if portage::handle_news() > 0 {
+            chevrons::three(Color::Red);
+            println!("Attention: You have unread news");
+            prompt::ask_user("Press CR", PromptType::PressCR);
+        }
     }
 
     // Displays any messages from package installs to the user

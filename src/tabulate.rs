@@ -1,6 +1,7 @@
 use crossterm::terminal::size;
 use std::process;
 
+// Gets the current terminal size
 pub fn termsize() -> (usize, usize) {
     let mut session_width: usize = 0;
     let mut session_height: usize = 0;
@@ -17,6 +18,7 @@ pub fn termsize() -> (usize, usize) {
     (session_width, session_height)
 }
 
+// Pretty prints a list of packages
 pub fn package_list(plist: &Vec<&str>) {
     println!();
     let spaces: u16 = 4;
@@ -41,6 +43,7 @@ pub fn package_list(plist: &Vec<&str>) {
     println!();
 }
 
+// Calculates the longest in a vector of strings
 pub fn longest(thelist: &Vec<&str>) -> u16 {
     let mut l = 0;
     let mut _thislen = 0;

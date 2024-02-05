@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+// Prompt the user to continue, skip, quit etc
 pub fn ask_user(userinput: &str, mode: crate::PromptType) -> bool {
     if mode == ClearScreen {
         let _ignore = execute!(
@@ -48,8 +49,9 @@ pub fn ask_user(userinput: &str, mode: crate::PromptType) -> bool {
     true
 }
 
+// Introduces a delay by slow-printing dots
 pub fn dots(manydots: i32) {
-    for _counter in 0..=manydots {
+    for _counter in 1..=manydots {
         print!(".");
         std::thread::sleep(Duration::from_millis(1000));
         std::io::stdout().flush().unwrap();

@@ -1,8 +1,14 @@
-use crate::{chevrons, linux, prompt::{self, ask_user}, tabulate, PromptType, Upgrade};
+use crate::{
+    chevrons, linux,
+    prompt::{self, ask_user},
+    tabulate, PromptType, Upgrade,
+};
 use crossterm::style::Color;
 use filetime::FileTime;
 use std::{fs, io::Write, process};
 
+// If the are no packages to update, return false. Or return true otherwise
+// and also display a list of packages pending updates
 pub fn eix_diff() -> bool {
     let shellout_result = linux::system_command_quiet("eix-diff");
     linux::exit_on_failure(&shellout_result);
@@ -133,7 +139,8 @@ pub fn upgrade_package(package: &str) {
 }
 
 // This function performs an update of the world set - i.e a full system upgrade
-//
+// It can optionally run in fetch mode, whereby it merely downloads the ebuilds instead of
+// installing them
 pub fn upgrade_world(run_type: Upgrade) {
     match run_type {
         Upgrade::Real => {
@@ -142,6 +149,7 @@ pub fn upgrade_world(run_type: Upgrade) {
                 "Updating world set",
             );
             linux::exit_on_failure(&shellout_result);
+            prompt::dots(10);
         }
         Upgrade::Fetch => {
             let shellout_result = linux::system_command_non_interactive(
@@ -154,6 +162,8 @@ pub fn upgrade_world(run_type: Upgrade) {
     }
 }
 
+// After package installs there are sometimes messages to the user advising them of actions they
+// need to take. These are collected into elog files and displayed here
 pub fn elogv() {
     let _shellout_result =
         linux::system_command_interactive("elogv", "Checking for new ebuild logs");
@@ -220,6 +230,7 @@ pub fn depclean(run_type: Upgrade) -> i32 {
     }
 }
 
+// Reverse dependency check
 pub fn revdep_rebuild(run_type: Upgrade) -> bool {
     match run_type {
         Upgrade::Pretend => {
@@ -260,7 +271,7 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
     }
 }
 
-// This function calls the portage sanity checker
+// This function calls the portage config sanity checker
 pub fn eix_test_obsolete() {
     let shellout_result =
         linux::system_command_non_interactive("eix-test-obsolete", "Checking obsolete configs");
@@ -283,10 +294,13 @@ pub fn eclean_distfiles() {
     linux::exit_on_failure(&shellout_result);
 }
 
+// eix_update resynchronises the eix database with the state of the currently installed packages
 pub fn eix_update() {
     let shellout_result = linux::system_command_quiet("eix-update");
     linux::exit_on_failure(&shellout_result);
 }
+
+// handle_news checks to see if there is unread news and lists it if required
 pub fn handle_news() -> u32 {
     let mut count: u32 = 0;
     let shellout_result = linux::system_command_quiet("eselect news count new");
@@ -299,7 +313,17 @@ pub fn handle_news() -> u32 {
         } else {
             chevrons::eerht(Color::Red);
             println!("You have {} news item(s) to read", count);
+            let _ignore =
+                linux::system_command_non_interactive("eselect news list", "News listing");
+            let _ignore = linux::system_command_interactive("eselect news read", "News listing");
         }
     }
     count
+}
+
+// dispatch_conf handles pending changes to package configuration files
+pub fn dispatch_conf() {
+    let shellout_result =
+        linux::system_command_interactive("dispatch-conf", "Merge config file changes");
+    linux::exit_on_failure(&shellout_result);
 }
