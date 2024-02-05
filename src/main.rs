@@ -8,7 +8,7 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-const VERSION: &str = "0.21a";
+const VERSION: &str = "0.22a";
 
 pub mod chevrons;
 pub mod linux;
@@ -50,7 +50,7 @@ fn main() {
     let mut force = false;
     let mut cleanup = false;
     let mut first = true;
-    let mut background = true;
+    let mut separate = false;
     for arg in args {
         if first {
             first = false;
@@ -77,7 +77,7 @@ fn main() {
                 force = true;
             }
             "-s" | "--separate" => {
-                background = true;
+                separate = true;
             }
             "-c" | "--cleanup" => {
                 cleanup = true;
@@ -159,7 +159,7 @@ fn main() {
         chevrons::three(Color::Green);
         println!("Initialising package database");
         portage::eix_update();
-
+        
         // Check if the last resync was too recent - if not, sync the portage tree
         if force || !portage::too_recent() {
             portage::do_eix_sync();
@@ -186,7 +186,7 @@ fn main() {
         prompt::ask_user("Please review", PromptType::PressCR);
 
         // Fetch sources
-        if ! background {
+        if separate {
             portage::upgrade_world(Upgrade::Fetch);
         }
 
