@@ -1,11 +1,11 @@
-use crate::{
-    chevrons, linux,
-    prompt::{self, ask_user},
-    tabulate, PromptType, Upgrade,
-};
+use crate::{chevrons, linux, prompt::ask_user, tabulate, PromptType, Upgrade};
 use crossterm::style::Color;
 use filetime::FileTime;
-use std::{fs, io::Write, process};
+use std::{
+    fs::{self, OpenOptions}, 
+    io::{Seek, SeekFrom, Write}, 
+    process,
+    };
 
 // If the are no packages to update, return false. Or return true otherwise
 // and also display a list of packages pending updates
@@ -35,16 +35,16 @@ pub fn eix_diff() -> bool {
             let num_updates = pending_updates.len();
             match num_updates {
                 0 => {
-                    chevrons::three(Color::Blue);
+                    chevrons::eerht(Color::Blue);
                     println!("There are no pending updates");
                     return false;
                 }
                 1 => {
-                    chevrons::three(Color::Yellow);
+                    chevrons::eerht(Color::Yellow);
                     println!("There is 1 package pending an update");
                 }
                 _ => {
-                    chevrons::three(Color::Yellow);
+                    chevrons::eerht(Color::Yellow);
                     println!("There are {} packages pending updates", num_updates);
                 }
             }
@@ -67,7 +67,7 @@ pub fn too_recent() -> bool {
     let nowutc = chrono::offset::Utc::now();
     let nowstamp = nowutc.timestamp();
     if nowstamp - filestamp < (24 * 60 * 60) {
-        chevrons::three(Color::Yellow);
+        chevrons::eerht(Color::Yellow);
         println!("Last sync was too recent: Skipping sync phase");
         true
     } else {
@@ -149,7 +149,6 @@ pub fn upgrade_world(run_type: Upgrade) {
                 "Updating world set",
             );
             linux::exit_on_failure(&shellout_result);
-            prompt::dots(10);
         }
         Upgrade::Fetch => {
             let shellout_result = linux::system_command_non_interactive(
@@ -179,7 +178,6 @@ pub fn depclean(run_type: Upgrade) -> i32 {
                 "Checking for orphaned dependencies",
             );
             linux::exit_on_failure(&shellout_result);
-            prompt::dots(5);
             if let (Ok(output), _) = shellout_result {
                 let lines = output.split('\n');
                 for line in lines {
@@ -219,7 +217,6 @@ pub fn depclean(run_type: Upgrade) -> i32 {
                 "Removing orphaned dependencies",
             );
             linux::exit_on_failure(&shellout_result);
-            prompt::dots(5);
             ask_user(
                 "Please verify the output of emerge --depclean above",
                 PromptType::PressCR,
@@ -239,7 +236,6 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
                 "Checking reverse dependencies",
             );
             linux::exit_on_failure(&shellout_result);
-            prompt::dots(5);
             if let (Ok(output), _) = shellout_result {
                 let lines = output.split('\n');
                 for line in lines {
@@ -260,7 +256,6 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
                 "Rebuilding reverse dependencies",
             );
             linux::exit_on_failure(&shellout_result);
-            prompt::dots(5);
             ask_user(
                 "Please verify the output of revdep-rebuild above",
                 PromptType::PressCR,
@@ -274,9 +269,8 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
 // This function calls the portage config sanity checker
 pub fn eix_test_obsolete() {
     let shellout_result =
-        linux::system_command_non_interactive("eix-test-obsolete", "Checking obsolete configs");
+        linux::system_command_interactive("eix-test-obsolete", "Checking obsolete configs");
     linux::exit_on_failure(&shellout_result);
-    prompt::dots(5);
 }
 
 // This function cleans up old kernels
@@ -296,7 +290,8 @@ pub fn eclean_distfiles() {
 
 // eix_update resynchronises the eix database with the state of the currently installed packages
 pub fn eix_update() {
-    let shellout_result = linux::system_command_quiet("eix-update");
+    let shellout_result =
+        linux::system_command_non_interactive("eix-update", "Initialising package database");
     linux::exit_on_failure(&shellout_result);
 }
 
@@ -313,8 +308,7 @@ pub fn handle_news() -> u32 {
         } else {
             chevrons::eerht(Color::Red);
             println!("You have {} news item(s) to read", count);
-            let _ignore =
-                linux::system_command_non_interactive("eselect news list", "News listing");
+            let _ignore = linux::system_command_interactive("eselect news list", "News listing");
             let _ignore = linux::system_command_interactive("eselect news read", "News listing");
         }
     }
@@ -326,4 +320,25 @@ pub fn dispatch_conf() {
     let shellout_result =
         linux::system_command_interactive("dispatch-conf", "Merge config file changes");
     linux::exit_on_failure(&shellout_result);
+}
+
+// Checks and corrects the ELOG configuration in make.conf
+pub fn elog_make_conf() {
+    let makeconf = fs::read_to_string("/etc/portage/make.conf");
+        if let Ok(contents) = makeconf {
+            for eachline in contents.lines() {
+                if eachline.contains("PORTAGE_ELOG_SYSTEM") {
+                    return;
+                }
+            }
+            chevrons::three(Color::Yellow);
+            println!("Configuring elogv");
+            let mut file = OpenOptions::new()
+            .write(true)
+            .append(true)
+            .open("/etc/portage/make.conf")
+            .unwrap();
+            file.seek(SeekFrom::End(0)).unwrap();
+            file.write_all(b"# Logging\nPORTAGE_ELOG_CLASSES=\"warn error log\"\nPORTAGE_ELOG_SYSTEM=\"save\"\n").unwrap();
+        }
 }

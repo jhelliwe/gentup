@@ -8,7 +8,7 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-const VERSION: &str = "0.22a";
+const VERSION: &str = "0.23a";
 
 pub mod chevrons;
 pub mod linux;
@@ -127,12 +127,18 @@ fn main() {
         "app-portage/ufed",
         "app-admin/eclean-kernel",
         "app-admin/sysstat",
+        "app-editors/vim",
         "net-dns/bind-tools",
         "app-misc/tmux",
         "net-misc/netkit-telnetd",
         "sys-apps/mlocate",
         "sys-apps/util-linux",
+        "sys-apps/inxi",
+        "sys-apps/pciutils",
+        "sys-apps/usbutils",
         "sys-process/nmon",
+        "dev-lang/rust-bin",
+        "dev-vcs/git",
     ];
     for check in packages_to_check {
         if portage::package_is_missing(check) {
@@ -153,13 +159,14 @@ fn main() {
     }
     println!(" OK");
 
+    // Check that elogv is configured
+    portage::elog_make_conf();
+
     if !cleanup {
         // Only do update tasks if the user did not select cleanup mode
         // Make sure the eix database is up to date
-        chevrons::three(Color::Green);
-        println!("Initialising package database");
         portage::eix_update();
-        
+
         // Check if the last resync was too recent - if not, sync the portage tree
         if force || !portage::too_recent() {
             portage::do_eix_sync();
@@ -194,8 +201,6 @@ fn main() {
         chevrons::three(Color::Green);
         println!("Checking Gentoo news");
         if portage::handle_news() > 0 {
-            chevrons::three(Color::Red);
-            println!("Attention: You have unread news");
             prompt::ask_user("Press CR", PromptType::PressCR);
         }
 
@@ -209,10 +214,8 @@ fn main() {
     // Special case for cleanup mode - handle news here too.
     if cleanup {
         chevrons::three(Color::Green);
-        println!("Rechecking Gentoo news");
+        println!("Checking Gentoo news");
         if portage::handle_news() > 0 {
-            chevrons::three(Color::Red);
-            println!("Attention: You have unread news");
             prompt::ask_user("Press CR", PromptType::PressCR);
         }
     }

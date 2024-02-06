@@ -6,13 +6,14 @@ use crossterm::{
 use execute::Execute;
 use std::{
     error::Error,
-    fs::{self, File},
+    fs::File,
     io::{self, BufRead, BufReader},
-    process::{self, Command},
+    process::{self, Command, Stdio},
 };
+use terminal_spinners::{SpinnerBuilder, LINE};
 
-// This function executes "command_line" in a thread, while stdin and stdout are piped to "tee"
-// The output from the command is returned as a String so the caller can parse the output
+// This function executes "command_line" with a progress spinner, and returns the output to the
+// caller of the function
 pub fn system_command_non_interactive(
     command_line: &str,
     status: &str,
@@ -30,18 +31,17 @@ pub fn system_command_non_interactive(
     let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Cyan));
     println!("{}", command_line);
     let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Grey));
-    let mut command2 = Command::new("tee");
-    command2.arg("/tmp/output");
-    let results = command.execute_multiple_output(&mut [&mut command2]);
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
+    let text = " ".to_owned() + status;
+    let handle = SpinnerBuilder::new().spinner(&LINE).text(text).start();
+    let results = command.execute_output();
+    handle.stop_and_clear();
     match results {
-        Ok(output) => {
-            let contents = fs::read_to_string("/tmp/output");
-            if let Ok(contents) = contents {
-                (Ok(contents), output.status.code().unwrap())
-            } else {
-                (Ok("".to_string()), output.status.code().unwrap())
-            }
-        }
+        Ok(output) => (
+            Ok(String::from_utf8_lossy(&output.stdout).to_string()),
+            output.status.code().unwrap(),
+        ),
         Err(errors) => (Err(Box::new(errors)), 1),
     }
 }

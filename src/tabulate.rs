@@ -39,7 +39,9 @@ pub fn package_list(plist: &Vec<&str>) {
             print!(" ");
         }
     }
-    println!();
+    if counter > 0 {
+        println!();
+    }
     println!();
 }
 
