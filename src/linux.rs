@@ -43,7 +43,7 @@ pub fn system_command(
                 println!("{}", command_line);
                 let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Grey));
                 command.stdout(Stdio::piped());
-                let text = " Working (".to_string() + &command_line + ") ";
+                let text = " Working (".to_string() + command_line + ") ";
                 let handle = SpinnerBuilder::new().spinner(&LINE).text(text).start();
                 let result = command.execute_output();
                 handle.stop_and_clear();

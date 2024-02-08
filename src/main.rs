@@ -8,7 +8,7 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-const VERSION: &str = "0.25a";
+const VERSION: &str = "0.26a";
 
 pub mod chevrons;
 pub mod linux;
@@ -21,11 +21,13 @@ use crossterm::execute;
 use crossterm::style::Color;
 use std::{env, io, path::Path, process};
 
+#[derive(PartialEq)]
 pub enum Upgrade {
     Real,
     Pretend,
     Fetch,
     Kernel,
+    KernelPretend,
 }
 
 #[derive(PartialEq)]
@@ -155,7 +157,12 @@ fn main() {
     for check in packages_to_check {
         counter += 1;
         chevrons::eerht(Color::Green);
-        println!("Checking prerequsite package : {} of {} - {}                    ", counter, packages_to_check.len(), check);
+        println!(
+            "Checking prerequsite package : {} of {} - {}                    ",
+            counter,
+            packages_to_check.len(),
+            check
+        );
         let _ignore = execute!(io::stdout(), cursor::MoveUp(1));
         if portage::package_is_missing(check) {
             println!("                                                      ");
@@ -264,17 +271,28 @@ fn main() {
     // Check Portage sanity
     portage::eix_test_obsolete();
 
-    // Cleanup old kernels
-    if prompt::ask_user("Clean up old kernels?", PromptType::Review) {
-        portage::eclean_kernel();
-    }
-
     // Cleanup old distfiles
     if prompt::ask_user(
         "Clean up old distribution source tarballs?",
         PromptType::Review,
     ) {
         portage::eclean_distfiles();
+    }
+
+    // This extra depclean is to point out to the user that they still might have to depclean the
+    // kernel after reboot
+    if portage::depclean(DepClean::KernelPretend) != 0 {
+        chevrons::three(Color::Red);
+        println!("WARN: After completion there are still orphaned dependencies");
+        chevrons::three(Color::Red);
+        println!("If you have recently installed a new kernel, please reboot into the new kernel");
+        chevrons::three(Color::Red);
+        println!("and rerun this utility with the --cleanup command-line argument to clean up.");
+    } else {
+        // Cleanup old kernels
+        if prompt::ask_user("Clean up old kernels?", PromptType::Review) {
+            portage::eclean_kernel();
+        }
     }
 
     // fstrim

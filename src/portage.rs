@@ -178,9 +178,15 @@ pub fn elogv() {
 //
 pub fn depclean(run_type: DepClean) -> i32 {
     match run_type {
-        DepClean::Pretend => {
+        DepClean::Pretend | DepClean::KernelPretend => {
+            let mut _depclean_command = String::new();
+            if run_type == DepClean::Pretend {
+                _depclean_command = "emerge -p --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources".to_string();
+            } else {
+                _depclean_command = "emerge -p --depclean".to_string();
+            }
             let shellout_result = linux::system_command(
-                "emerge -p --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
+                &_depclean_command,
                 "Checking for orphaned dependencies",
                 NonInteractive,
             );
