@@ -4,10 +4,7 @@ use crossterm::{
     style::Color,
     terminal::{self, ClearType},
 };
-use std::{
-    io,
-    process,
-};
+use std::{io, process};
 
 // Prompt the user to continue, skip, quit etc
 pub fn ask_user(userinput: &str, mode: crate::PromptType) -> bool {

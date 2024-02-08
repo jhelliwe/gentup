@@ -15,10 +15,11 @@ pub mod linux;
 pub mod portage;
 pub mod prompt;
 pub mod tabulate;
-use crossterm::style::Color;
+use crate::CmdVerbose::*;
 use crossterm::cursor;
 use crossterm::execute;
-use std::{io, env, path::Path, process};
+use crossterm::style::Color;
+use std::{env, io, path::Path, process};
 
 pub enum Upgrade {
     Real,
@@ -33,6 +34,15 @@ pub enum PromptType {
     Review,
     PressCR,
 }
+
+pub enum CmdVerbose {
+    NonInteractive,
+    Interactive,
+    Quiet,
+}
+
+pub type RevDep = Upgrade;
+pub type DepClean = Upgrade;
 
 fn main() {
     // Check we are root
@@ -93,7 +103,7 @@ fn main() {
     }
 
     // Get started
-    let _ignore = linux::system_command_interactive("clear", "clear");
+    let _ignore = linux::system_command("clear", "clear", Interactive);
     println!("\nWelcome to the Gentoo Updater v{}\n", VERSION);
 
     // Are we running on Gentoo?
@@ -102,18 +112,20 @@ fn main() {
 
     // We won't get much further if eix is not installed. We must check this
     if !Path::new("/usr/bin/eix").exists() {
-        let shellout_result = linux::system_command_non_interactive(
+        let shellout_result = linux::system_command(
             "emerge --quiet -v app-portage/eix",
             "Installing eix",
+            NonInteractive,
         );
         linux::exit_on_failure(&shellout_result);
     }
 
     // We won't get much further if equery is not installed. We must check this too
     if !Path::new("/usr/bin/equery").exists() {
-        let shellout_result = linux::system_command_non_interactive(
+        let shellout_result = linux::system_command(
             "emerge --quiet -v app-portage/gentoolkit",
             "Installing gentoolkit",
+            NonInteractive,
         );
         linux::exit_on_failure(&shellout_result);
     }
@@ -139,9 +151,11 @@ fn main() {
         "dev-lang/rust-bin",
         "dev-vcs/git",
     ];
+    let mut counter = 0;
     for check in packages_to_check {
+        counter += 1;
         chevrons::eerht(Color::Green);
-        println!("Checking prerequsite package : {}          ", check);
+        println!("Checking prerequsite package : {} of {} - {}                    ", counter, packages_to_check.len(), check);
         let _ignore = execute!(io::stdout(), cursor::MoveUp(1));
         if portage::package_is_missing(check) {
             println!("                                                      ");
@@ -156,11 +170,11 @@ fn main() {
             ]
             .concat();
             let shellout_result =
-                linux::system_command_interactive(&cmdline, "Installing missing package");
+                linux::system_command(&cmdline, "Installing missing package", Interactive);
             linux::exit_on_failure(&shellout_result);
         }
     }
-    println!("                                                      ");
+    println!("                                                                   ");
     let _ignore = execute!(io::stdout(), cursor::MoveUp(1));
 
     // Check that elogv is configured
@@ -230,22 +244,21 @@ fn main() {
     portage::elogv();
 
     // List and remove orphaned dependencies
-    if portage::depclean(Upgrade::Pretend) != 0 {
-        if cleanup { 
+    if portage::depclean(DepClean::Pretend) != 0 {
+        if cleanup {
             // We only depclean kernel packages in cleanup mode - This is to prevent the issue of
             // depclean removing the currently running kernel immedately after a kernel upgrade
-            portage::depclean(Upgrade::Kernel);
-        }
-        else { 
-            portage::depclean(Upgrade::Real);
+            portage::depclean(DepClean::Kernel);
+        } else {
+            portage::depclean(DepClean::Real);
         }
     }
 
     // Check reverse dependencies
-    if !portage::revdep_rebuild(Upgrade::Pretend)
+    if !portage::revdep_rebuild(RevDep::Pretend)
         && prompt::ask_user("Perform reverse dependency rebuild?", PromptType::Review)
     {
-        portage::revdep_rebuild(Upgrade::Real);
+        portage::revdep_rebuild(RevDep::Real);
     }
 
     // Check Portage sanity

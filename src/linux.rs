@@ -1,4 +1,7 @@
-use crate::chevrons;
+use crate::{
+    chevrons,
+    CmdVerbose::{self, *},
+};
 use crossterm::{
     execute,
     style::{Color, SetForegroundColor},
@@ -12,11 +15,16 @@ use std::{
 };
 use terminal_spinners::{SpinnerBuilder, LINE};
 
-// This function executes "command_line" with a progress spinner, and returns the output to the
+// This function executes "command_line" with an optional progress spinner, and returns the stdout as a String to the
 // caller of the function
-pub fn system_command_non_interactive(
+// A CmdVerbose type of Interactive leaves stdin abd stdout attached to the terminal session
+// A CmdVerbose type on NonInteractive produces no output, provides a progress spinner and returns
+// stdout as a String
+// A CmdVerbose type of Quiet is quiet!
+pub fn system_command(
     command_line: &str,
     status: &str,
+    verbose: CmdVerbose,
 ) -> (Result<String, Box<dyn Error>>, i32) {
     let mut command_words = Vec::new();
     for word in command_line.split_whitespace() {
@@ -26,68 +34,36 @@ pub fn system_command_non_interactive(
     for argument in command_words.iter().skip(1) {
         command.arg(argument);
     }
-    chevrons::three(Color::Green);
-    print!("{}: ", status);
-    let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Cyan));
-    println!("{}", command_line);
-    let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Grey));
-    command.stdout(Stdio::piped());
-    //command.stderr(Stdio::piped());
-    let text = " Working ".to_string();
-    let handle = SpinnerBuilder::new().spinner(&LINE).text(text).start();
-    let results = command.execute_output();
-    handle.stop_and_clear();
-    match results {
-        Ok(output) => (
-            Ok(String::from_utf8_lossy(&output.stdout).to_string()),
-            output.status.code().unwrap(),
-        ),
-        Err(errors) => (Err(Box::new(errors)), 1),
-    }
-}
-
-// This function executes "command_line", with stdin, stdout and stderr untouched, so the user can
-// interact with the command. Although it returns a string with the stdout of the command, it is
-// never captured, so will be an empty string.
-pub fn system_command_interactive(
-    command_line: &str,
-    status: &str,
-) -> (Result<String, Box<dyn Error>>, i32) {
-    let mut command_words = Vec::new();
-    for word in command_line.split_whitespace() {
-        command_words.push(word);
-    }
-    let mut command = Command::new(command_words[0]);
-    for argument in command_words.iter().skip(1) {
-        command.arg(argument);
-    }
-    chevrons::three(Color::Green);
-    print!("{}: ", status);
-    let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Cyan));
-    println!("{}", command_line);
-    let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Grey));
-    let results = command.execute_output();
-    match results {
-        Ok(output) => (
-            Ok(String::from_utf8_lossy(&output.stdout).to_string()),
-            output.status.code().unwrap(),
-        ),
-        Err(errors) => (Err(Box::new(errors)), 1),
-    }
-}
-
-// This function executes "command_line", with stdin, stdout and stderr sent to /dev/null
-// returning the output as a String
-pub fn system_command_quiet(command_line: &str) -> (Result<String, Box<dyn Error>>, i32) {
-    let mut command_words = Vec::new();
-    for word in command_line.split_whitespace() {
-        command_words.push(word);
-    }
-    let mut command = Command::new(command_words[0]);
-    for argument in command_words.iter().skip(1) {
-        command.arg(argument);
-    }
-    let results = command.output();
+    let results = {
+        match verbose {
+            NonInteractive => {
+                chevrons::three(Color::Green);
+                print!("{}: ", status);
+                let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Cyan));
+                println!("{}", command_line);
+                let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Grey));
+                command.stdout(Stdio::piped());
+                let text = " Working (".to_string() + &command_line + ") ";
+                let handle = SpinnerBuilder::new().spinner(&LINE).text(text).start();
+                let result = command.execute_output();
+                handle.stop_and_clear();
+                result
+            }
+            Interactive => {
+                chevrons::three(Color::Green);
+                print!("{}: ", status);
+                let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Cyan));
+                println!("{}", command_line);
+                let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Grey));
+                command.execute_output()
+            }
+            Quiet => {
+                command.stdout(Stdio::piped());
+                command.stderr(Stdio::piped());
+                command.execute_output()
+            }
+        }
+    };
     match results {
         Ok(output) => (
             Ok(String::from_utf8_lossy(&output.stdout).to_string()),
@@ -98,7 +74,7 @@ pub fn system_command_quiet(command_line: &str) -> (Result<String, Box<dyn Error
 }
 
 pub fn call_fstrim() {
-    let shellout_results = system_command_non_interactive("fstrim -a -v", "Trimming filesystems");
+    let shellout_results = system_command("fstrim -a -v", "Trimming filesystems", NonInteractive);
     exit_on_failure(&shellout_results);
 }
 

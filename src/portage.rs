@@ -1,16 +1,19 @@
-use crate::{chevrons, linux, prompt::ask_user, tabulate, PromptType, Upgrade};
+use crate::{
+    chevrons, linux, prompt::ask_user, tabulate, CmdVerbose::*, DepClean, PromptType, RevDep,
+    Upgrade,
+};
 use crossterm::style::Color;
 use filetime::FileTime;
 use std::{
-    fs::{self, OpenOptions}, 
-    io::{Seek, SeekFrom, Write}, 
+    fs::{self, OpenOptions},
+    io::{Seek, SeekFrom, Write},
     process,
-    };
+};
 
 // If the are no packages to update, return false. Or return true otherwise
 // and also display a list of packages pending updates
 pub fn eix_diff() -> bool {
-    let shellout_result = linux::system_command_quiet("eix-diff");
+    let shellout_result = linux::system_command("eix-diff", "", Quiet);
     linux::exit_on_failure(&shellout_result);
     match shellout_result {
         (Ok(output), _) => {
@@ -80,7 +83,7 @@ pub fn too_recent() -> bool {
 pub fn package_is_missing(package: &str) -> bool {
     //print!(".");
     //std::io::stdout().flush().unwrap();
-    let shellout_result = linux::system_command_quiet(&["equery l ", package].concat());
+    let shellout_result = linux::system_command(&["equery l ", package].concat(), "", Quiet);
     match shellout_result {
         (Ok(_), return_code) => {
             if return_code != 0 {
@@ -103,14 +106,14 @@ pub fn package_is_missing(package: &str) -> bool {
 // This function updates the package tree metadata for Gentoo Linux
 //
 pub fn do_eix_sync() {
-    let shellout_result = linux::system_command_non_interactive("eix-sync", "Syncing package tree");
+    let shellout_result = linux::system_command("eix-sync", "Syncing package tree", NonInteractive);
     linux::exit_on_failure(&shellout_result);
 }
 
 // This function calls eix to check if the named package is due an upgrade
 //
 pub fn package_outdated(package: &str) -> bool {
-    let shellout_result = linux::system_command_quiet(&["eix -u ", package].concat());
+    let shellout_result = linux::system_command(&["eix -u ", package].concat(), "", Quiet);
     match shellout_result {
         (Ok(_), return_status) => {
             if return_status != 0 {
@@ -131,9 +134,10 @@ pub fn package_outdated(package: &str) -> bool {
 // This function performs an update of the named package
 //
 pub fn upgrade_package(package: &str) {
-    let shellout_result = linux::system_command_interactive(
+    let shellout_result = linux::system_command(
         &["emerge --quiet -1av ", package].concat(),
         "Upgrading package",
+        Interactive,
     );
     linux::exit_on_failure(&shellout_result);
 }
@@ -144,16 +148,18 @@ pub fn upgrade_package(package: &str) {
 pub fn upgrade_world(run_type: Upgrade) {
     match run_type {
         Upgrade::Real => {
-            let shellout_result = linux::system_command_interactive(
+            let shellout_result = linux::system_command(
                 "emerge --quiet -uNDv --with-bdeps y --changed-use --complete-graph @world",
                 "Updating world set",
+                Interactive,
             );
             linux::exit_on_failure(&shellout_result);
         }
         Upgrade::Fetch => {
-            let shellout_result = linux::system_command_non_interactive(
+            let shellout_result = linux::system_command(
                 "emerge --quiet --fetchonly -uNDv --with-bdeps y --changed-use --complete-graph @world",
                 "Fetching sources",
+                NonInteractive,
             );
             linux::exit_on_failure(&shellout_result);
         }
@@ -165,17 +171,18 @@ pub fn upgrade_world(run_type: Upgrade) {
 // need to take. These are collected into elog files and displayed here
 pub fn elogv() {
     let _shellout_result =
-        linux::system_command_interactive("elogv", "Checking for new ebuild logs");
+        linux::system_command("elogv", "Checking for new ebuild logs", Interactive);
 }
 
 // This function does a depclean
 //
-pub fn depclean(run_type: Upgrade) -> i32 {
+pub fn depclean(run_type: DepClean) -> i32 {
     match run_type {
-        Upgrade::Pretend => {
-            let shellout_result = linux::system_command_non_interactive(
+        DepClean::Pretend => {
+            let shellout_result = linux::system_command(
                 "emerge -p --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
                 "Checking for orphaned dependencies",
+                NonInteractive,
             );
             linux::exit_on_failure(&shellout_result);
             if let (Ok(output), _) = shellout_result {
@@ -211,12 +218,13 @@ pub fn depclean(run_type: Upgrade) -> i32 {
             0
         }
 
-        Upgrade::Real => {
+        DepClean::Real => {
             chevrons::three(Color::Yellow);
             println!("Note: This step does not clean up old kernels. If you wish this behaviour, please rerun with the --cleanup command line switch");
-            let shellout_result = linux::system_command_interactive(
+            let shellout_result = linux::system_command(
                 "emerge -a --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
                 "Removing orphaned dependencies",
+                Interactive,
             );
             linux::exit_on_failure(&shellout_result);
             ask_user(
@@ -226,10 +234,11 @@ pub fn depclean(run_type: Upgrade) -> i32 {
             0
         }
 
-        Upgrade::Kernel => {
-            let shellout_result = linux::system_command_interactive(
+        DepClean::Kernel => {
+            let shellout_result = linux::system_command(
                 "emerge --ask --depclean",
                 "Removing orphaned dependencies",
+                Interactive,
             );
             linux::exit_on_failure(&shellout_result);
             ask_user(
@@ -243,12 +252,13 @@ pub fn depclean(run_type: Upgrade) -> i32 {
 }
 
 // Reverse dependency check
-pub fn revdep_rebuild(run_type: Upgrade) -> bool {
+pub fn revdep_rebuild(run_type: RevDep) -> bool {
     match run_type {
-        Upgrade::Pretend => {
-            let shellout_result = linux::system_command_non_interactive(
+        RevDep::Pretend => {
+            let shellout_result = linux::system_command(
                 "revdep-rebuild -ip",
                 "Checking reverse dependencies",
+                NonInteractive,
             );
             linux::exit_on_failure(&shellout_result);
             if let (Ok(output), _) = shellout_result {
@@ -265,10 +275,11 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
             println!("Broken reverse dependencies were found. Initiating revdep-rebuild");
             false
         }
-        Upgrade::Real => {
-            let shellout_result = linux::system_command_interactive(
+        RevDep::Real => {
+            let shellout_result = linux::system_command(
                 "revdep-rebuild",
                 "Rebuilding reverse dependencies",
+                Interactive,
             );
             linux::exit_on_failure(&shellout_result);
             ask_user(
@@ -283,37 +294,46 @@ pub fn revdep_rebuild(run_type: Upgrade) -> bool {
 
 // This function calls the portage config sanity checker
 pub fn eix_test_obsolete() {
-    let shellout_result =
-        linux::system_command_interactive("eix-test-obsolete", "Checking obsolete configs");
+    let shellout_result = linux::system_command(
+        "eix-test-obsolete",
+        "Checking obsolete configs",
+        Interactive,
+    );
     linux::exit_on_failure(&shellout_result);
 }
 
 // This function cleans up old kernels
 pub fn eclean_kernel() {
     let shellout_result =
-        linux::system_command_interactive("eclean-kernel -Aa", "Cleaning old kernels");
+        linux::system_command("eclean-kernel -Aa", "Cleaning old kernels", Interactive);
     linux::exit_on_failure(&shellout_result);
 }
 
 // This function removes old unused package tarballs
 //
 pub fn eclean_distfiles() {
-    let shellout_result =
-        linux::system_command_interactive("eclean -d distfiles", "Cleaning unused distfiles");
+    let shellout_result = linux::system_command(
+        "eclean -d distfiles",
+        "Cleaning unused distfiles",
+        Interactive,
+    );
     linux::exit_on_failure(&shellout_result);
 }
 
 // eix_update resynchronises the eix database with the state of the currently installed packages
 pub fn eix_update() {
-    let shellout_result =
-        linux::system_command_non_interactive("eix-update", "Initialising package database");
+    let shellout_result = linux::system_command(
+        "eix-update",
+        "Initialising package database",
+        NonInteractive,
+    );
     linux::exit_on_failure(&shellout_result);
 }
 
 // handle_news checks to see if there is unread news and lists it if required
 pub fn handle_news() -> u32 {
     let mut count: u32 = 0;
-    let shellout_result = linux::system_command_quiet("eselect news count new");
+    let shellout_result = linux::system_command("eselect news count new", "", Quiet);
     linux::exit_on_failure(&shellout_result);
     if let (Ok(output), _) = shellout_result {
         count = output.trim().parse().unwrap_or(0);
@@ -323,8 +343,8 @@ pub fn handle_news() -> u32 {
         } else {
             chevrons::eerht(Color::Red);
             println!("You have {} news item(s) to read", count);
-            let _ignore = linux::system_command_interactive("eselect news list", "News listing");
-            let _ignore = linux::system_command_interactive("eselect news read", "News listing");
+            let _ignore = linux::system_command("eselect news list", "News listing", Interactive);
+            let _ignore = linux::system_command("eselect news read", "News listing", Interactive);
         }
     }
     count
@@ -333,27 +353,30 @@ pub fn handle_news() -> u32 {
 // dispatch_conf handles pending changes to package configuration files
 pub fn dispatch_conf() {
     let shellout_result =
-        linux::system_command_interactive("dispatch-conf", "Merge config file changes");
+        linux::system_command("dispatch-conf", "Merge config file changes", Interactive);
     linux::exit_on_failure(&shellout_result);
 }
 
 // Checks and corrects the ELOG configuration in make.conf
 pub fn elog_make_conf() {
     let makeconf = fs::read_to_string("/etc/portage/make.conf");
-        if let Ok(contents) = makeconf {
-            for eachline in contents.lines() {
-                if eachline.contains("PORTAGE_ELOG_SYSTEM") {
-                    return;
-                }
+    if let Ok(contents) = makeconf {
+        for eachline in contents.lines() {
+            if eachline.contains("PORTAGE_ELOG_SYSTEM") {
+                return;
             }
-            chevrons::three(Color::Yellow);
-            println!("Configuring elogv");
-            let mut file = OpenOptions::new()
+        }
+        chevrons::three(Color::Yellow);
+        println!("Configuring elogv");
+        let mut file = OpenOptions::new()
             .write(true)
             .append(true)
             .open("/etc/portage/make.conf")
             .unwrap();
-            file.seek(SeekFrom::End(0)).unwrap();
-            file.write_all(b"# Logging\nPORTAGE_ELOG_CLASSES=\"warn error log\"\nPORTAGE_ELOG_SYSTEM=\"save\"\n").unwrap();
-        }
+        file.seek(SeekFrom::End(0)).unwrap();
+        file.write_all(
+            b"# Logging\nPORTAGE_ELOG_CLASSES=\"warn error log\"\nPORTAGE_ELOG_SYSTEM=\"save\"\n",
+        )
+        .unwrap();
+    }
 }
