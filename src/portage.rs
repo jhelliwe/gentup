@@ -78,8 +78,8 @@ pub fn too_recent() -> bool {
 // This function checks that a named package is installed.
 //
 pub fn package_is_missing(package: &str) -> bool {
-    print!(".");
-    std::io::stdout().flush().unwrap();
+    //print!(".");
+    //std::io::stdout().flush().unwrap();
     let shellout_result = linux::system_command_quiet(&["equery l ", package].concat());
     match shellout_result {
         (Ok(_), return_code) => {
@@ -174,7 +174,7 @@ pub fn depclean(run_type: Upgrade) -> i32 {
     match run_type {
         Upgrade::Pretend => {
             let shellout_result = linux::system_command_non_interactive(
-                "emerge -p --depclean",
+                "emerge -p --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
                 "Checking for orphaned dependencies",
             );
             linux::exit_on_failure(&shellout_result);
@@ -212,8 +212,23 @@ pub fn depclean(run_type: Upgrade) -> i32 {
         }
 
         Upgrade::Real => {
+            chevrons::three(Color::Yellow);
+            println!("Note: This step does not clean up old kernels. If you wish this behaviour, please rerun with the --cleanup command line switch");
             let shellout_result = linux::system_command_interactive(
-                "emerge --depclean",
+                "emerge -a --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
+                "Removing orphaned dependencies",
+            );
+            linux::exit_on_failure(&shellout_result);
+            ask_user(
+                "Please verify the output of emerge --depclean above",
+                PromptType::PressCR,
+            );
+            0
+        }
+
+        Upgrade::Kernel => {
+            let shellout_result = linux::system_command_interactive(
+                "emerge --ask --depclean",
                 "Removing orphaned dependencies",
             );
             linux::exit_on_failure(&shellout_result);

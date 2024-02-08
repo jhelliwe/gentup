@@ -5,9 +5,8 @@ use crossterm::{
     terminal::{self, ClearType},
 };
 use std::{
-    io::{self, Write},
+    io,
     process,
-    time::Duration,
 };
 
 // Prompt the user to continue, skip, quit etc
@@ -47,14 +46,4 @@ pub fn ask_user(userinput: &str, mode: crate::PromptType) -> bool {
         return false;
     }
     true
-}
-
-// Introduces a delay by slow-printing dots
-pub fn dots(manydots: i32) {
-    for _counter in 1..=manydots {
-        print!(".");
-        std::thread::sleep(Duration::from_millis(1000));
-        std::io::stdout().flush().unwrap();
-    }
-    println!();
 }

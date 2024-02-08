@@ -32,8 +32,8 @@ pub fn system_command_non_interactive(
     println!("{}", command_line);
     let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Grey));
     command.stdout(Stdio::piped());
-    command.stderr(Stdio::piped());
-    let text = " ".to_owned() + status;
+    //command.stderr(Stdio::piped());
+    let text = " Working ".to_string();
     let handle = SpinnerBuilder::new().spinner(&LINE).text(text).start();
     let results = command.execute_output();
     handle.stop_and_clear();

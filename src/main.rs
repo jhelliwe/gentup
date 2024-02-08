@@ -8,7 +8,7 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-const VERSION: &str = "0.23a";
+const VERSION: &str = "0.24a";
 
 pub mod chevrons;
 pub mod linux;
@@ -16,12 +16,15 @@ pub mod portage;
 pub mod prompt;
 pub mod tabulate;
 use crossterm::style::Color;
-use std::{env, path::Path, process};
+use crossterm::cursor;
+use crossterm::execute;
+use std::{io, env, path::Path, process};
 
 pub enum Upgrade {
     Real,
     Pretend,
     Fetch,
+    Kernel,
 }
 
 #[derive(PartialEq)]
@@ -97,10 +100,6 @@ fn main() {
     let _distro =
         linux::check_distro("Gentoo".to_string()).expect("This updater only works on Gentoo Linux");
 
-    // Check things are installed
-    chevrons::three(Color::Green);
-    print!("Checking environment: ");
-
     // We won't get much further if eix is not installed. We must check this
     if !Path::new("/usr/bin/eix").exists() {
         let shellout_result = linux::system_command_non_interactive(
@@ -141,7 +140,11 @@ fn main() {
         "dev-vcs/git",
     ];
     for check in packages_to_check {
+        chevrons::eerht(Color::Green);
+        println!("Checking prerequsite package : {}          ", check);
+        let _ignore = execute!(io::stdout(), cursor::MoveUp(1));
         if portage::package_is_missing(check) {
+            println!("                                                      ");
             chevrons::eerht(Color::Red);
             println!(
                 "This program requires {} to be installed. Installing...",
@@ -157,7 +160,8 @@ fn main() {
             linux::exit_on_failure(&shellout_result);
         }
     }
-    println!(" OK");
+    println!("                                                      ");
+    let _ignore = execute!(io::stdout(), cursor::MoveUp(1));
 
     // Check that elogv is configured
     portage::elog_make_conf();
@@ -205,7 +209,9 @@ fn main() {
         }
 
         // All pre-requisites done - time for upgrade
-        portage::upgrade_world(Upgrade::Real);
+        if prompt::ask_user("Ready for upgrade?", PromptType::Review) {
+            portage::upgrade_world(Upgrade::Real);
+        }
 
         // Handle updating package config files
         portage::dispatch_conf();
@@ -225,7 +231,14 @@ fn main() {
 
     // List and remove orphaned dependencies
     if portage::depclean(Upgrade::Pretend) != 0 {
-        portage::depclean(Upgrade::Real);
+        if cleanup { 
+            // We only depclean kernel packages in cleanup mode - This is to prevent the issue of
+            // depclean removing the currently running kernel immedately after a kernel upgrade
+            portage::depclean(Upgrade::Kernel);
+        }
+        else { 
+            portage::depclean(Upgrade::Real);
+        }
     }
 
     // Check reverse dependencies
