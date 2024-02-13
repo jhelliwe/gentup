@@ -1,12 +1,13 @@
 use crate::{
-    chevrons, linux, prompt::ask_user, tabulate, CmdVerbose::*, DepClean, PromptType, RevDep,
-    Upgrade,
+    chevrons, linux, portage, prompt::ask_user, tabulate, CmdVerbose::*, DepClean, PromptType,
+    RevDep, Upgrade,
 };
-use crossterm::style::Color;
+use crossterm::{cursor, execute, style::Color};
 use filetime::FileTime;
 use std::{
-    fs::{self, OpenOptions},
-    io::{Seek, SeekFrom, Write},
+    fs::{self, File, OpenOptions},
+    io::{self, Seek, SeekFrom, Write},
+    path::Path,
     process,
 };
 
@@ -81,8 +82,6 @@ pub fn too_recent() -> bool {
 // This function checks that a named package is installed.
 //
 pub fn package_is_missing(package: &str) -> bool {
-    //print!(".");
-    //std::io::stdout().flush().unwrap();
     let shellout_result = linux::system_command(&["equery l ", package].concat(), "", Quiet);
     match shellout_result {
         (Ok(_), return_code) => {
@@ -176,7 +175,8 @@ pub fn elogv() {
 
 // This function does a depclean
 //
-pub fn depclean(run_type: DepClean) -> i32 {
+pub fn depclean(run_type: DepClean) -> (i32, i32) {
+    let mut kernels = 0;
     match run_type {
         DepClean::Pretend | DepClean::KernelPretend => {
             let mut _depclean_command = String::new();
@@ -194,6 +194,9 @@ pub fn depclean(run_type: DepClean) -> i32 {
             if let (Ok(output), _) = shellout_result {
                 let lines = output.split('\n');
                 for line in lines {
+                    if line.contains("kernel") {
+                        kernels += 1;
+                    }
                     if line.starts_with("Number to remove") {
                         let mut words = line.split_whitespace();
                         let mut word: Option<&str> = Some("");
@@ -208,25 +211,23 @@ pub fn depclean(run_type: DepClean) -> i32 {
                                 } else {
                                     chevrons::eerht(Color::Yellow);
                                 }
-                                println!("Found {} dependencies to clean", numdep);
-                                return numdep;
+                                println!("Found {} dependencies to clean, {} of which is a kernel package", numdep, kernels);
+                                return (numdep, kernels);
                             }
                             None => {
                                 chevrons::eerht(Color::Green);
                                 println!("There are no orphamed dependencies");
-                                return 0;
+                                return (0, kernels);
                             }
                         }
                     }
                 }
             }
 
-            0
+            (0, 0)
         }
 
         DepClean::Real => {
-            chevrons::three(Color::Yellow);
-            println!("Note: This step does not clean up old kernels. If you wish this behaviour, please rerun with the --cleanup command line switch");
             let shellout_result = linux::system_command(
                 "emerge -a --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
                 "Removing orphaned dependencies",
@@ -237,7 +238,7 @@ pub fn depclean(run_type: DepClean) -> i32 {
                 "Please verify the output of emerge --depclean above",
                 PromptType::PressCR,
             );
-            0
+            (0, 0)
         }
 
         DepClean::Kernel => {
@@ -251,9 +252,9 @@ pub fn depclean(run_type: DepClean) -> i32 {
                 "Please verify the output of emerge --depclean above",
                 PromptType::PressCR,
             );
-            0
+            (0, 0)
         }
-        _ => 0,
+        _ => (0, 0),
     }
 }
 
@@ -385,4 +386,121 @@ pub fn elog_make_conf() {
         )
         .unwrap();
     }
+}
+
+pub fn check_and_install_deps() {
+    // We won't get much further if eix is not installed. We must check this
+    if !Path::new("/usr/bin/eix").exists() {
+        let shellout_result = linux::system_command(
+            "emerge --quiet -v app-portage/eix",
+            "Installing eix",
+            NonInteractive,
+        );
+        linux::exit_on_failure(&shellout_result);
+        portage::eix_update();
+    }
+
+    // We won't get much further if equery is not installed. We must check this too
+    if !Path::new("/usr/bin/equery").exists() {
+        let shellout_result = linux::system_command(
+            "emerge --quiet -v app-portage/gentoolkit",
+            "Installing gentoolkit",
+            NonInteractive,
+        );
+        linux::exit_on_failure(&shellout_result);
+    }
+
+    // We won't get much further if elogv is not installed. We must check this too
+    if !Path::new("/usr/bin/elogv").exists() {
+        let shellout_result = linux::system_command(
+            "emerge --quiet -v app-portage/elogv",
+            "Installing elogv",
+            NonInteractive,
+        );
+        linux::exit_on_failure(&shellout_result);
+    }
+
+    // We won't get much further if eclean-kernel is not installed. We must check this too
+    if !Path::new("/usr/bin/eclean-kernel").exists() {
+        let shellout_result = linux::system_command(
+            "emerge --quiet -v app-admin/eclean-kernel",
+            "Installing eclean-kernel",
+            NonInteractive,
+        );
+        linux::exit_on_failure(&shellout_result);
+    }
+
+    // This list of packages is hardcoded. While this is good for me, other users may be annoyed at
+    // this personal choice. So we get this list read in from a text file. Then the user can modify
+    // it to their requirements. And if the file does not exists, prepopulate it anyway
+
+    // The hardcoded list of packages
+    let packages_to_check = [
+        "app-portage/cpuid2cpuflags",
+        "app-portage/pfl",
+        "app-portage/ufed",
+        "app-admin/sysstat",
+        "app-editors/vim",
+        "net-dns/bind-tools",
+        "app-misc/tmux",
+        "net-misc/netkit-telnetd",
+        "sys-apps/mlocate",
+        "sys-apps/inxi",
+        "sys-apps/pciutils",
+        "sys-apps/usbutils",
+        "sys-process/nmon",
+        "dev-lang/rust-bin",
+        "dev-vcs/git",
+    ];
+
+    // If /etc/default/gentup does not exist, create it with the above contents
+    if !Path::new("/etc/default/gentup").exists() {
+        let path = Path::new("/etc/default/gentup");
+        let display = path.display();
+        let mut file = match File::create(path) {
+            Err(why) => panic!("couldn't create {}: {}", display, why),
+            Ok(file) => file,
+        };
+        for check in packages_to_check {
+            match writeln!(file, "{check}") {
+                Err(why) => panic!("couldn't write to {}: {}", display, why),
+                Ok(file) => file,
+            }
+        }
+    }
+
+    // Read /etc/default/gentup into a Vector of strings
+    let packages_to_check_string =
+        fs::read_to_string("/etc/default/gentup").expect("Error in reading the file");
+    let mut counter = 0;
+    let packages_to_check: Vec<&str> = packages_to_check_string.lines().collect();
+    for check in &packages_to_check {
+        counter += 1;
+        chevrons::eerht(Color::Green);
+        println!(
+            "Checking prerequsite package : {} of {} - {}                    ",
+            counter,
+            packages_to_check.len(),
+            check
+        );
+        let _ignore = execute!(io::stdout(), cursor::MoveUp(1));
+        if portage::package_is_missing(check) {
+            println!("                                                      ");
+            chevrons::eerht(Color::Red);
+            println!(
+                "This program requires {} to be installed. Installing...",
+                check
+            );
+            let cmdline = [
+                "emerge --quiet --autounmask y --autounmask-write y -av ",
+                check,
+            ]
+            .concat();
+            let shellout_result =
+                linux::system_command(&cmdline, "Installing missing package", Interactive);
+            linux::exit_on_failure(&shellout_result);
+        }
+    }
+    println!("                                                                   ");
+    let _ignore = execute!(io::stdout(), cursor::MoveUp(1));
 }

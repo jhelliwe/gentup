@@ -17,10 +17,16 @@ use terminal_spinners::{SpinnerBuilder, LINE};
 
 // This function executes "command_line" with an optional progress spinner, and returns the stdout as a String to the
 // caller of the function
-// A CmdVerbose type of Interactive leaves stdin abd stdout attached to the terminal session
-// A CmdVerbose type on NonInteractive produces no output, provides a progress spinner and returns
-// stdout as a String
-// A CmdVerbose type of Quiet is quiet!
+//
+// A CmdVerbose type of Interactive leaves stdin and stdout attached to the terminal session. 
+// Due to the fact that stdout is left alone, we cannot capture stdout to the String, so this
+// function will return an empty string to the caller, for Interactive shellouts.
+//
+// A CmdVerbose type of NonInteractive produces no output, provides a progress spinner and returns
+// stdout captured as a String
+//
+// A CmdVerbose type of Quiet is ditto, but with no spinner. Returns stdout as a String
+//
 pub fn system_command(
     command_line: &str,
     status: &str,
@@ -85,7 +91,7 @@ pub fn exit_on_failure(shellout_result: &(Result<String, Box<dyn Error>>, i32)) 
         (Ok(_), status) => {
             if *status != 0 {
                 chevrons::eerht(Color::Red);
-                eprintln!("The command had a non zero exit status. Please check.");
+                eprintln!("The command had a non zero exit status. Please check.\n",);
                 process::exit(1);
             }
         }
@@ -98,7 +104,7 @@ pub fn exit_on_failure(shellout_result: &(Result<String, Box<dyn Error>>, i32)) 
 }
 
 // Returns the name of the Linux distro we are running on. I don't actually check this IS Linux,
-// because there is only me using it, and I'm not likely to run this on a Windows box etc
+// because there is only me using it, and I'm not likely to run this on a Windows/Mac/FreeBSD box etc
 pub fn check_distro(required_distro: String) -> Result<String, String> {
     let os_release = File::open("/etc/os-release").expect("/etc/os-release should be readable!");
     let readbuf = BufReader::new(os_release);
