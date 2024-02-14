@@ -13,17 +13,17 @@ use std::{
 
 // If the are no packages to update, return false. Or return true otherwise
 // and also display a list of packages pending updates
-pub fn eix_diff() -> bool {
-    let shellout_result = linux::system_command("eix-diff", "", Quiet);
+pub fn portage_diff() -> bool {
+    let shellout_result = linux::system_command("emerge -puDv @world", "Checking for updates", NonInteractive);
     linux::exit_on_failure(&shellout_result);
     match shellout_result {
         (Ok(output), _) => {
             let mut pending_updates = Vec::new();
             for line in output.split('\n') {
-                if line.starts_with("[U") {
+                if line.starts_with("[ebuild") {
                     let mut words = line.split_whitespace();
                     let mut word: Option<&str> = Some("");
-                    for _counter in 1..=3 {
+                    for _counter in 1..=4 {
                         word = words.next();
                     }
                     match word {
@@ -57,7 +57,7 @@ pub fn eix_diff() -> bool {
         }
         (Err(_), _) => {
             chevrons::three(Color::Red);
-            eprintln!("Error calling eix-diff");
+            eprintln!("Error calling emerge");
             false
         }
     }
@@ -389,50 +389,39 @@ pub fn elog_make_conf() {
 }
 
 pub fn check_and_install_deps() {
-    // We won't get much further if eix is not installed. We must check this
-    if !Path::new("/usr/bin/eix").exists() {
+
+    // Check the hard dependencies of this program
+    let packages_to_check = [
+        [ "app-portage/eix", "/usr/bin/eix", "eix-update" ],
+        [ "app-portage/gentoolkit", "/usr/bin/equery", "" ],
+        [ "app-portage/elogv", "/usr/bin/elogv", "" ],
+        [ "app-admin/elogv", "/usr/bin/elogv", "" ],
+    ];
+
+    for package in packages_to_check {
+        if !Path::new(&package[1]).exists() {
+        chevrons::eerht(Color::Yellow);
+        println!("This updater requires the {} package.", &package[0]);
         let shellout_result = linux::system_command(
-            "emerge --quiet -v app-portage/eix",
-            "Installing eix",
+            &["emerge --quiet -v ", &package[0]].concat(),
+            &["Installing ", &package[0]].concat(),
             NonInteractive,
-        );
-        linux::exit_on_failure(&shellout_result);
-        portage::eix_update();
+            );
+            linux::exit_on_failure(&shellout_result);
+            if !&package[2].eq("") {
+                let shellout_result = linux::system_command(
+                    &package[2],
+                    "Post installation configuration",
+                    NonInteractive,
+                    );
+                linux::exit_on_failure(&shellout_result);
+            }
+        }
     }
 
-    // We won't get much further if equery is not installed. We must check this too
-    if !Path::new("/usr/bin/equery").exists() {
-        let shellout_result = linux::system_command(
-            "emerge --quiet -v app-portage/gentoolkit",
-            "Installing gentoolkit",
-            NonInteractive,
-        );
-        linux::exit_on_failure(&shellout_result);
-    }
-
-    // We won't get much further if elogv is not installed. We must check this too
-    if !Path::new("/usr/bin/elogv").exists() {
-        let shellout_result = linux::system_command(
-            "emerge --quiet -v app-portage/elogv",
-            "Installing elogv",
-            NonInteractive,
-        );
-        linux::exit_on_failure(&shellout_result);
-    }
-
-    // We won't get much further if eclean-kernel is not installed. We must check this too
-    if !Path::new("/usr/bin/eclean-kernel").exists() {
-        let shellout_result = linux::system_command(
-            "emerge --quiet -v app-admin/eclean-kernel",
-            "Installing eclean-kernel",
-            NonInteractive,
-        );
-        linux::exit_on_failure(&shellout_result);
-    }
-
-    // This list of packages is hardcoded. While this is good for me, other users may be annoyed at
+    // This following list of packages is hardcoded. While this is good for me, other users may be annoyed at
     // this personal choice. So we get this list read in from a text file. Then the user can modify
-    // it to their requirements. And if the file does not exists, prepopulate it anyway
+    // it to their requirements. And if the file does not exists, pre-populate it anyway
 
     // The hardcoded list of packages
     let packages_to_check = [
@@ -467,6 +456,15 @@ pub fn check_and_install_deps() {
                 Ok(file) => file,
             }
         }
+        chevrons::eerht(Color::Red);
+        println!("No /etc/default/gentup configuration file detected");
+        chevrons::eerht(Color::Red);
+        println!("Creating /etc/default/gentup with a default package list");
+        chevrons::eerht(Color::Red);
+        println!("These packages will be installed by this updater");
+        chevrons::eerht(Color::Red);
+        println!("Please customise this list to your preferences, and then re-run this program");
+        process::exit(1);
     }
 
     // Read /etc/default/gentup into a Vector of strings
