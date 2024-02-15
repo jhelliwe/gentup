@@ -1,6 +1,4 @@
-use crate::linux;
-use crate::rotational;
-use crate::CmdVerbose::Quiet;
+use crate::{linux, rotational, CmdVerbose::Quiet};
 use std::fs;
 
 pub fn getdev_rootfs() -> String {

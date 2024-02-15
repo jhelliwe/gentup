@@ -18,7 +18,7 @@ use terminal_spinners::{SpinnerBuilder, LINE};
 // This function executes "command_line" with an optional progress spinner, and returns the stdout as a String to the
 // caller of the function
 //
-// A CmdVerbose type of Interactive leaves stdin and stdout attached to the terminal session. 
+// A CmdVerbose type of Interactive leaves stdin and stdout attached to the terminal session.
 // Due to the fact that stdout is left alone, we cannot capture stdout to the String, so this
 // function will return an empty string to the caller, for Interactive shellouts.
 //
@@ -49,7 +49,7 @@ pub fn system_command(
                 println!("{}", command_line);
                 let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Grey));
                 command.stdout(Stdio::piped());
-                let text = status.to_string();
+                let text = [" ", status].concat();
                 let handle = SpinnerBuilder::new().spinner(&LINE).text(text).start();
                 let result = command.execute_output();
                 handle.stop_and_clear();
@@ -117,7 +117,6 @@ pub fn check_distro(required_distro: String) -> Result<String, String> {
     let parts: Vec<&str> = parts.collect();
     let detected_distro = parts[1].to_string();
     chevrons::three(Color::Green);
-    println!("Running on {}: OK", detected_distro);
     match required_distro.eq(&detected_distro) {
         true => Ok(detected_distro),
         false => Err(detected_distro),

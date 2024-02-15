@@ -42,7 +42,7 @@ pub fn cmdlinargs(args: Args) -> Option<GentupArgs> {
                 println!("Usage:\n\n \
                     gentup [options]\n \
                     Options:\n\n\
-                    -c, --cleanup    Only perform cleanup, useful if you interupped the previous run\n\
+                    -c, --cleanup    Perform cleanup tasks only\n\
                     -f, --force      force eix-sync, bypassing the timestamp check\n\
                     -s  --separate   Perform source fetching separately before update\n\
                     -h, --help       Display this help text, then exit\n\

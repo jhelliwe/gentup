@@ -1,6 +1,9 @@
 use crate::{
-    chevrons, linux, portage, prompt::ask_user, tabulate, CmdVerbose::*, DepClean, PromptType,
-    RevDep, Upgrade,
+    chevrons, linux, portage,
+    prompt::ask_user,
+    tabulate,
+    CmdVerbose::*,
+    DepClean, PromptType::{self, PressCR}, RevDep, Upgrade,
 };
 use crossterm::{cursor, execute, style::Color};
 use filetime::FileTime;
@@ -10,11 +13,16 @@ use std::{
     path::Path,
     process,
 };
+use terminal_spinners::{SpinnerBuilder, LINE};
 
 // If the are no packages to update, return false. Or return true otherwise
 // and also display a list of packages pending updates
-pub fn portage_diff() -> bool {
-    let shellout_result = linux::system_command("emerge -puDv @world", "Checking for updates", NonInteractive);
+pub fn portage_diff(fetch: bool) -> bool {
+    let shellout_result = linux::system_command(
+        "emerge -puDv @world",
+        "Checking for updates",
+        NonInteractive,
+    );
     linux::exit_on_failure(&shellout_result);
     match shellout_result {
         (Ok(output), _) => {
@@ -53,6 +61,9 @@ pub fn portage_diff() -> bool {
                 }
             }
             tabulate::package_list(&pending_updates);
+            if fetch {
+                portage::fetch_sources(&pending_updates);
+            }
             true
         }
         (Err(_), _) => {
@@ -278,7 +289,7 @@ pub fn revdep_rebuild(run_type: RevDep) -> bool {
                     }
                 }
             }
-            chevrons::eerht(Color::Red);
+            chevrons::eerht(Color::Yellow);
             println!("Broken reverse dependencies were found. Initiating revdep-rebuild");
             false
         }
@@ -348,7 +359,7 @@ pub fn handle_news() -> u32 {
             chevrons::eerht(Color::Blue);
             println!("No news is good news")
         } else {
-            chevrons::eerht(Color::Red);
+            chevrons::eerht(Color::Yellow);
             println!("You have {} news item(s) to read", count);
             let _ignore = linux::system_command("eselect news list", "News listing", Interactive);
             let _ignore = linux::system_command("eselect news read", "News listing", Interactive);
@@ -389,31 +400,30 @@ pub fn elog_make_conf() {
 }
 
 pub fn check_and_install_deps() {
-
     // Check the hard dependencies of this program
     let packages_to_check = [
-        [ "app-portage/eix", "/usr/bin/eix", "eix-update" ],
-        [ "app-portage/gentoolkit", "/usr/bin/equery", "" ],
-        [ "app-portage/elogv", "/usr/bin/elogv", "" ],
-        [ "app-admin/elogv", "/usr/bin/elogv", "" ],
+        ["app-portage/eix", "/usr/bin/eix", "eix-update"],
+        ["app-portage/gentoolkit", "/usr/bin/equery", ""],
+        ["app-portage/elogv", "/usr/bin/elogv", ""],
+        ["app-admin/eclean-kernel", "/usr/bin/eclean-kernel", ""],
     ];
 
     for package in packages_to_check {
         if !Path::new(&package[1]).exists() {
-        chevrons::eerht(Color::Yellow);
-        println!("This updater requires the {} package.", &package[0]);
-        let shellout_result = linux::system_command(
-            &["emerge --quiet -v ", &package[0]].concat(),
-            &["Installing ", &package[0]].concat(),
-            NonInteractive,
+            chevrons::eerht(Color::Yellow);
+            println!("This updater requires the {} package.", &package[0]);
+            let shellout_result = linux::system_command(
+                &["emerge --quiet -v ", &package[0]].concat(),
+                &["Installing ", &package[0]].concat(),
+                NonInteractive,
             );
             linux::exit_on_failure(&shellout_result);
             if !&package[2].eq("") {
                 let shellout_result = linux::system_command(
-                    &package[2],
+                    package[2],
                     "Post installation configuration",
                     NonInteractive,
-                    );
+                );
                 linux::exit_on_failure(&shellout_result);
             }
         }
@@ -421,9 +431,8 @@ pub fn check_and_install_deps() {
 
     // This following list of packages is hardcoded. While this is good for me, other users may be annoyed at
     // this personal choice. So we get this list read in from a text file. Then the user can modify
-    // it to their requirements. And if the file does not exists, pre-populate it anyway
+    // it to their requirements. And if the file does not exist, pre-populate it anyway
 
-    // The hardcoded list of packages
     let packages_to_check = [
         "app-portage/cpuid2cpuflags",
         "app-portage/pfl",
@@ -484,7 +493,7 @@ pub fn check_and_install_deps() {
         let _ignore = execute!(io::stdout(), cursor::MoveUp(1));
         if portage::package_is_missing(check) {
             println!("                                                      ");
-            chevrons::eerht(Color::Red);
+            chevrons::eerht(Color::Yellow);
             println!(
                 "This program requires {} to be installed. Installing...",
                 check
@@ -501,4 +510,31 @@ pub fn check_and_install_deps() {
     }
     println!("                                                                   ");
     let _ignore = execute!(io::stdout(), cursor::MoveUp(1));
+}
+
+pub fn fetch_sources(package_vec: &Vec<&str>) {
+    let mut count = 0;
+    let total = package_vec.len();
+    for ebuild_to_fetch in package_vec {
+        count += 1;
+        let text = [
+            " Downloading ",
+            &count.to_string(),
+            " of ",
+            &total.to_string(),
+            ": ",
+            ebuild_to_fetch,
+        ]
+        .concat();
+        let handle = SpinnerBuilder::new().spinner(&LINE).text(text).start();
+
+        let shellout_result = linux::system_command(
+            &["emerge --fetchonly --nodeps =", ebuild_to_fetch].concat(),
+            "",
+            Quiet,
+        );
+        linux::exit_on_failure(&shellout_result);
+        handle.stop_and_clear();
+    }
+    ask_user("Press CR", PressCR);
 }
