@@ -2,7 +2,7 @@
 // Written by John Helliwell
 // https://github.com/jhelliwe
 
-const VERSION: &str = "0.29a";
+const VERSION: &str = "0.30a";
 
 /* This program is free software: you can redistribute it
  * and/or modify it under the terms of the GNU General
@@ -25,7 +25,7 @@ pub mod portage; // Interacts with the Portage package manager
 pub mod prompt; // Asks the user permission to continue
 pub mod rotational; // Finds out if the root filesystem is on a rotational hard disk or SSD
 pub mod tabulate; // Pretty prints a list of packages in a tabulated fashion
-pub mod typedefs; // Common type definitions // Get device node information
+pub mod typedefs; // Common type definitions
 
 use crate::typedefs::*;
 use crossterm::{
@@ -53,27 +53,22 @@ fn main() {
             );
 
             // Print a welcome banner
-
             println!("\nWelcome to the Gentoo Updater v{}\n", VERSION);
 
             // Are we running on Gentoo? if not, panic the program
-
             let _distro = linux::check_distro("Gentoo".to_string())
                 .expect("This updater only works on Gentoo Linux");
 
             // This call installs commonly required packages. Some are a direct dependency of this updater,
             // but some are just useful packages I usually install on a brand new Gentoo install
-
             portage::check_and_install_deps();
 
             // Check that elogv is configured - elogv collects post-installation notes for package
             // updates, so the user is notified about actions they need to take. If elogv is
             // installed but not configured, this function call will configure elogv for us
-
             portage::elog_make_conf();
 
             // Only do update tasks if the user did not select cleanup mode
-
             if !arguments.cleanup {
                 // Check if the last resync was too recent - if not, sync the portage tree
                 // or the user can force a sync anyway by using "gentup --force"
@@ -98,7 +93,6 @@ fn main() {
 
                 // Present a list of packages to be updated to the screen
                 // If there are no packages pending updates, we can quit at this stage
-
                 if !portage::portage_diff(arguments.separate) && !arguments.force {
                     process::exit(0);
                 }
@@ -107,7 +101,6 @@ fn main() {
                 }
 
                 // Check the news - if there is news, list and read it
-
                 chevrons::three(Color::Green);
                 println!("Checking Gentoo news");
                 if portage::handle_news() > 0 {
@@ -115,11 +108,9 @@ fn main() {
                 }
 
                 // All pre-requisites done - time for upgrade
-
                 portage::upgrade_world(Upgrade::Real);
 
                 // Handle updating package config files
-
                 portage::dispatch_conf();
             }
 

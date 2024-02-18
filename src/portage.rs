@@ -30,13 +30,17 @@ pub fn portage_diff(fetch: bool) -> bool {
             for line in output.split('\n') {
                 if line.starts_with("[ebuild") {
                     let mut words = line.split_whitespace();
-                    let mut word: Option<&str> = Some("");
-                    for _counter in 1..=4 {
-                        word = words.next();
+                    let mut _word: Option<&str> = Some("");
+                    for _counter in 1..=8 {
+                        _word = words.next();
+                        if _word.eq(&Some("]")) {
+                            break
+                        }
                     }
-                    match word {
-                        Some(word) => {
-                            pending_updates.push(word);
+                    _word = words.next();
+                    match _word {
+                        Some(_word) => {
+                            pending_updates.push(_word);
                         }
                         None => {
                             break;
