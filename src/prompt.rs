@@ -16,14 +16,17 @@ pub fn ask_user(userinput: &str, mode: crate::PromptType) -> bool {
         );
     }
     if mode != PressCR {
-        chevrons::three(Color::Green);
         println!(
-            "{}: Press return to continue, s to skip, q to quit",
+            "{} {}: Press return to continue, s to skip, q to quit",
+            chevrons::three(Color::Green),
             userinput
         );
     } else {
-        chevrons::three(Color::Green);
-        println!("{}: Press return to continue, or q to quit", userinput);
+        println!(
+            "{} {}: Press return to continue, or q to quit",
+            chevrons::three(Color::Green),
+            userinput,
+        );
     }
 
     let mut user_input = String::new();
@@ -33,13 +36,11 @@ pub fn ask_user(userinput: &str, mode: crate::PromptType) -> bool {
         .expect("Failed to read line");
 
     if user_input.eq("q\n") {
-        chevrons::three(Color::Green);
-        println!("Quitting at user request");
+        println!("{} Quitting at user request", chevrons::three(Color::Green));
         process::exit(0);
     }
     if user_input.eq("s\n") {
-        chevrons::three(Color::Green);
-        println!("Skipping at user request");
+        println!("{} Skipping at user request", chevrons::three(Color::Green));
         return false;
     }
     true

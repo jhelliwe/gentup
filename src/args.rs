@@ -39,7 +39,8 @@ pub fn cmdlinargs(args: Args) -> Option<GentupArgs> {
         }
         match &arg[..] {
             "-h" | "--help" => {
-                println!("Usage:\n\n \
+                println!(
+                    "Usage:\n\n \
                     gentup [options]\n \
                     Options:\n\n\
                     -c, --cleanup    Perform cleanup tasks only\n\
@@ -47,7 +48,8 @@ pub fn cmdlinargs(args: Args) -> Option<GentupArgs> {
                     -s  --separate   Perform source fetching separately before update\n\
                     -h, --help       Display this help text, then exit\n\
                     -V, --version    Display the program version\
-                ");
+                "
+                );
                 return None;
             }
             "-V" | "--version" => {

@@ -1,17 +1,9 @@
-use crossterm::{
-    execute,
-    style::{Color, SetForegroundColor},
-};
-use std::io;
+use crossterm::style::{Color, SetForegroundColor};
 
-pub fn three(colour: Color) {
-    let _ignore = execute!(io::stdout(), SetForegroundColor(colour));
-    print!(">>> ");
-    let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Grey));
+pub fn three(colour: Color) -> String {
+    SetForegroundColor(colour).to_string() + ">>>" + &SetForegroundColor(Color::Grey).to_string()
 }
 
-pub fn eerht(colour: Color) {
-    let _ignore = execute!(io::stdout(), SetForegroundColor(colour));
-    print!("<<< ");
-    let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Grey));
+pub fn eerht(colour: Color) -> String {
+    SetForegroundColor(colour).to_string() + "<<<" + &SetForegroundColor(Color::Grey).to_string()
 }

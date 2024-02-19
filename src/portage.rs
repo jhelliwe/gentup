@@ -3,7 +3,9 @@ use crate::{
     prompt::ask_user,
     tabulate,
     CmdVerbose::*,
-    DepClean, PromptType::{self, PressCR}, RevDep, Upgrade,
+    DepClean,
+    PromptType::{self, PressCR},
+    RevDep, Upgrade,
 };
 use crossterm::{cursor, execute, style::Color};
 use filetime::FileTime;
@@ -13,7 +15,7 @@ use std::{
     path::Path,
     process,
 };
-use terminal_spinners::{SpinnerBuilder, LINE};
+use terminal_spinners::{SpinnerBuilder, BOUNCE};
 
 // If the are no packages to update, return false. Or return true otherwise
 // and also display a list of packages pending updates
@@ -34,7 +36,7 @@ pub fn portage_diff(fetch: bool) -> bool {
                     for _counter in 1..=8 {
                         _word = words.next();
                         if _word.eq(&Some("]")) {
-                            break
+                            break;
                         }
                     }
                     _word = words.next();
@@ -51,17 +53,24 @@ pub fn portage_diff(fetch: bool) -> bool {
             let num_updates = pending_updates.len();
             match num_updates {
                 0 => {
-                    chevrons::eerht(Color::Blue);
-                    println!("There are no pending updates");
+                    println!(
+                        "{} There are no pending updates",
+                        chevrons::eerht(Color::Blue)
+                    );
                     return false;
                 }
                 1 => {
-                    chevrons::eerht(Color::Yellow);
-                    println!("There is 1 package pending an update");
+                    println!(
+                        "{} There is 1 package pending an update",
+                        chevrons::eerht(Color::Yellow)
+                    );
                 }
                 _ => {
-                    chevrons::eerht(Color::Yellow);
-                    println!("There are {} packages pending updates", num_updates);
+                    println!(
+                        "{} There are {} packages pending updates",
+                        chevrons::eerht(Color::Yellow),
+                        num_updates
+                    );
                 }
             }
             tabulate::package_list(&pending_updates);
@@ -71,8 +80,7 @@ pub fn portage_diff(fetch: bool) -> bool {
             true
         }
         (Err(_), _) => {
-            chevrons::three(Color::Red);
-            eprintln!("Error calling emerge");
+            eprintln!("{} Error calling emerge", chevrons::three(Color::Red));
             false
         }
     }
@@ -86,8 +94,10 @@ pub fn too_recent() -> bool {
     let nowutc = chrono::offset::Utc::now();
     let nowstamp = nowutc.timestamp();
     if nowstamp - filestamp < (24 * 60 * 60) {
-        chevrons::eerht(Color::Yellow);
-        println!("Last sync was too recent: Skipping sync phase");
+        println!(
+            "{} Last sync was too recent: Skipping sync phase",
+            chevrons::eerht(Color::Yellow)
+        );
         true
     } else {
         false
@@ -102,16 +112,22 @@ pub fn package_is_missing(package: &str) -> bool {
         (Ok(_), return_code) => {
             if return_code != 0 {
                 println!();
-                chevrons::three(Color::Yellow);
-                println!("{} is not installed", package);
+                println!(
+                    "{} {} is not installed",
+                    chevrons::three(Color::Yellow),
+                    package
+                );
                 return true;
             }
             false
         }
         (Err(returned_error), _) => {
             eprintln!();
-            chevrons::three(Color::Red);
-            eprintln!("Problem running command: {}", returned_error);
+            eprintln!(
+                "{} Problem running command: {}",
+                chevrons::three(Color::Red),
+                returned_error
+            );
             process::exit(1);
         }
     }
@@ -133,13 +149,19 @@ pub fn package_outdated(package: &str) -> bool {
             if return_status != 0 {
                 return false;
             }
-            chevrons::three(Color::Yellow);
-            println!("{} needs upgrade", package);
+            println!(
+                "{} {} needs upgrade",
+                chevrons::three(Color::Yellow),
+                package
+            );
             true
         }
         (Err(_), returned_error) => {
-            chevrons::three(Color::Red);
-            eprintln!("Command returned {}", returned_error);
+            eprintln!(
+                "{} Command returned {}",
+                chevrons::three(Color::Red),
+                returned_error
+            );
             process::exit(1);
         }
     }
@@ -221,17 +243,23 @@ pub fn depclean(run_type: DepClean) -> (i32, i32) {
                         match word {
                             Some(word) => {
                                 let numdep = word.parse().unwrap();
+                                let mut _depcolor = Color::Green;
                                 if numdep == 0 {
-                                    chevrons::eerht(Color::Blue);
+                                    _depcolor = Color::Blue;
                                 } else {
-                                    chevrons::eerht(Color::Yellow);
+                                    _depcolor = Color::Yellow;
                                 }
-                                println!("Found {} dependencies to clean, {} of which is a kernel package", numdep, kernels);
+                                println!(
+                                    "{} Found {} dependencies to clean, {} of which is a kernel package", 
+                                    chevrons::eerht(_depcolor), numdep, kernels
+                                );
                                 return (numdep, kernels);
                             }
                             None => {
-                                chevrons::eerht(Color::Green);
-                                println!("There are no orphamed dependencies");
+                                println!(
+                                    "{} There are no orphamed dependencies",
+                                    chevrons::eerht(Color::Green)
+                                );
                                 return (0, kernels);
                             }
                         }
@@ -287,14 +315,18 @@ pub fn revdep_rebuild(run_type: RevDep) -> bool {
                 let lines = output.split('\n');
                 for line in lines {
                     if line.starts_with("Your system is consistent") {
-                        chevrons::eerht(Color::Blue);
-                        println!("No broken reverse dependencies were found");
+                        println!(
+                            "{} No broken reverse dependencies were found",
+                            chevrons::eerht(Color::Blue)
+                        );
                         return true;
                     }
                 }
             }
-            chevrons::eerht(Color::Yellow);
-            println!("Broken reverse dependencies were found. Initiating revdep-rebuild");
+            println!(
+                "{} Broken reverse dependencies were found. Initiating revdep-rebuild",
+                chevrons::eerht(Color::Yellow)
+            );
             false
         }
         RevDep::Real => {
@@ -360,11 +392,13 @@ pub fn handle_news() -> u32 {
     if let (Ok(output), _) = shellout_result {
         count = output.trim().parse().unwrap_or(0);
         if count == 0 {
-            chevrons::eerht(Color::Blue);
-            println!("No news is good news")
+            println!("{} No news is good news", chevrons::eerht(Color::Blue));
         } else {
-            chevrons::eerht(Color::Yellow);
-            println!("You have {} news item(s) to read", count);
+            println!(
+                "{} You have {} news item(s) to read",
+                chevrons::eerht(Color::Yellow),
+                count,
+            );
             let _ignore = linux::system_command("eselect news list", "News listing", Interactive);
             let _ignore = linux::system_command("eselect news read", "News listing", Interactive);
         }
@@ -388,8 +422,7 @@ pub fn elog_make_conf() {
                 return;
             }
         }
-        chevrons::three(Color::Yellow);
-        println!("Configuring elogv");
+        println!("{} Configuring elogv", chevrons::three(Color::Yellow));
         let mut file = OpenOptions::new()
             .write(true)
             .append(true)
@@ -414,8 +447,11 @@ pub fn check_and_install_deps() {
 
     for package in packages_to_check {
         if !Path::new(&package[1]).exists() {
-            chevrons::eerht(Color::Yellow);
-            println!("This updater requires the {} package.", &package[0]);
+            println!(
+                "{} This updater requires the {} package.",
+                chevrons::eerht(Color::Yellow),
+                &package[0]
+            );
             let shellout_result = linux::system_command(
                 &["emerge --quiet -v ", &package[0]].concat(),
                 &["Installing ", &package[0]].concat(),
@@ -469,14 +505,22 @@ pub fn check_and_install_deps() {
                 Ok(file) => file,
             }
         }
-        chevrons::eerht(Color::Red);
-        println!("No /etc/default/gentup configuration file detected");
-        chevrons::eerht(Color::Red);
-        println!("Creating /etc/default/gentup with a default package list");
-        chevrons::eerht(Color::Red);
-        println!("These packages will be installed by this updater");
-        chevrons::eerht(Color::Red);
-        println!("Please customise this list to your preferences, and then re-run this program");
+        println!(
+            "{} No /etc/default/gentup configuration file detected",
+            chevrons::eerht(Color::Red),
+        );
+        println!(
+            "{} Creating /etc/default/gentup with a default package list",
+            chevrons::eerht(Color::Red),
+        );
+        println!(
+            "{} These packages will be installed by this updater",
+            chevrons::eerht(Color::Red),
+        );
+        println!(
+            "{} Please customise this list to your preferences, and then re-run this program",
+            chevrons::eerht(Color::Red),
+        );
         process::exit(1);
     }
 
@@ -487,9 +531,9 @@ pub fn check_and_install_deps() {
     let packages_to_check: Vec<&str> = packages_to_check_string.lines().collect();
     for check in &packages_to_check {
         counter += 1;
-        chevrons::eerht(Color::Green);
         println!(
-            "Checking prerequsite package : {} of {} - {}                    ",
+            "{} Checking prerequsite package : {} of {} - {}                    ",
+            chevrons::eerht(Color::Green),
             counter,
             packages_to_check.len(),
             check
@@ -497,9 +541,9 @@ pub fn check_and_install_deps() {
         let _ignore = execute!(io::stdout(), cursor::MoveUp(1));
         if portage::package_is_missing(check) {
             println!("                                                      ");
-            chevrons::eerht(Color::Yellow);
             println!(
-                "This program requires {} to be installed. Installing...",
+                "{} This program requires {} to be installed. Installing...",
+                chevrons::eerht(Color::Yellow),
                 check
             );
             let cmdline = [
@@ -530,15 +574,14 @@ pub fn fetch_sources(package_vec: &Vec<&str>) {
             ebuild_to_fetch,
         ]
         .concat();
-        let handle = SpinnerBuilder::new().spinner(&LINE).text(text).start();
-
+        let handle = SpinnerBuilder::new().spinner(&BOUNCE).text(text).start();
         let shellout_result = linux::system_command(
             &["emerge --fetchonly --nodeps =", ebuild_to_fetch].concat(),
             "",
             Quiet,
         );
         linux::exit_on_failure(&shellout_result);
-        handle.stop_and_clear();
+        handle.done();
     }
-    ask_user("Press CR", PressCR);
+    ask_user("Downloads complete", PressCR);
 }

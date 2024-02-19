@@ -43,21 +43,26 @@ pub fn system_command(
     let results = {
         match verbose {
             NonInteractive => {
-                chevrons::three(Color::Green);
-                print!("{}: ", status);
-                let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Cyan));
-                println!("{}", command_line);
-                let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Grey));
                 command.stdout(Stdio::piped());
-                let text = [" ", status].concat();
-                let handle = SpinnerBuilder::new().spinner(&LINE).text(text).start();
+                let text = chevrons::three(Color::Green)
+                    + " "
+                    + status
+                    + ": "
+                    + &SetForegroundColor(Color::Cyan).to_string()
+                    + command_line
+                    + &SetForegroundColor(Color::Grey).to_string()
+                    + " ";
+                let handle = SpinnerBuilder::new()
+                    .spinner(&LINE)
+                    .prefix(text)
+                    .text(" ")
+                    .start();
                 let result = command.execute_output();
-                handle.stop_and_clear();
+                handle.done();
                 result
             }
             Interactive => {
-                chevrons::three(Color::Green);
-                print!("{}: ", status);
+                print!("{} {}: ", chevrons::three(Color::Green), status);
                 let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Cyan));
                 println!("{}", command_line);
                 let _ignore = execute!(io::stdout(), SetForegroundColor(Color::Grey));
@@ -90,14 +95,19 @@ pub fn exit_on_failure(shellout_result: &(Result<String, Box<dyn Error>>, i32)) 
     match shellout_result {
         (Ok(_), status) => {
             if *status != 0 {
-                chevrons::eerht(Color::Red);
-                eprintln!("The command had a non zero exit status. Please check.\n",);
+                eprintln!(
+                    "{} The command had a non zero exit status. Please check.\n",
+                    chevrons::eerht(Color::Red)
+                );
                 process::exit(1);
             }
         }
         (Err(errors), _) => {
-            chevrons::eerht(Color::Red);
-            eprintln!("There was a problem executing the command: {}", errors);
+            eprintln!(
+                "{} There was a problem executing the command: {}",
+                chevrons::eerht(Color::Red),
+                errors
+            );
             process::exit(1);
         }
     }
@@ -116,7 +126,6 @@ pub fn check_distro(required_distro: String) -> Result<String, String> {
     let parts = firstline.split('=');
     let parts: Vec<&str> = parts.collect();
     let detected_distro = parts[1].to_string();
-    chevrons::three(Color::Green);
     match required_distro.eq(&detected_distro) {
         true => Ok(detected_distro),
         false => Err(detected_distro),

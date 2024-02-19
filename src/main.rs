@@ -2,7 +2,7 @@
 // Written by John Helliwell
 // https://github.com/jhelliwe
 
-const VERSION: &str = "0.30a";
+const VERSION: &str = "0.31a";
 
 /* This program is free software: you can redistribute it
  * and/or modify it under the terms of the GNU General
@@ -101,8 +101,7 @@ fn main() {
                 }
 
                 // Check the news - if there is news, list and read it
-                chevrons::three(Color::Green);
-                println!("Checking Gentoo news");
+                println!("{} Checking Gentoo news", chevrons::three(Color::Green));
                 if portage::handle_news() > 0 {
                     prompt::ask_user("Press CR", PromptType::PressCR);
                 }
@@ -129,19 +128,16 @@ fn main() {
             let (orphans, kernels) = portage::depclean(DepClean::KernelPretend); // Pretend mode only lists orphaned deps
 
             if !arguments.cleanup && kernels > 0 {
-                chevrons::three(Color::Blue);
-                println!("Upgrade complete. You should reboot into your new kernel and rerun this utility with the --cleanup flag");
-
-                // There are outstanding tasks, blocked due to the pending reboot into the new
-                // kernel. Exit here to allow the user to reboot
-
+                println!(
+                    "{} Upgrade complete. You should reboot into your new kernel and rerun this utility with the --cleanup flag", 
+                    chevrons::three(Color::Blue)
+                );
                 process::exit(0);
             }
 
             if orphans > 0 {
                 // We only depclean kernel packages in cleanup mode - This is to prevent the issue of
                 // depclean removing the currently running kernel immedately after a kernel upgrade
-
                 if arguments.cleanup && kernels > 0 {
                     portage::depclean(DepClean::Kernel); // depcleans everything including old kernel packages
                 } else {
@@ -187,8 +183,7 @@ fn main() {
                 linux::call_fstrim();
             }
 
-            chevrons::three(Color::Green);
-            println!("All done!!!");
+            println!("{} All done!!!", chevrons::three(Color::Green));
         }
         None => {
             // Command line arguments are incorrect, so exit
