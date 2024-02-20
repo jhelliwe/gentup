@@ -2,7 +2,7 @@
 // Written by John Helliwell
 // https://github.com/jhelliwe
 
-const VERSION: &str = "0.31a";
+const VERSION: &str = "0.32a";
 
 /* This program is free software: you can redistribute it
  * and/or modify it under the terms of the GNU General

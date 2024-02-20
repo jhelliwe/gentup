@@ -558,6 +558,7 @@ pub fn check_and_install_deps() {
     }
     println!("                                                                   ");
     let _ignore = execute!(io::stdout(), cursor::MoveUp(1));
+    let _ignore = linux::system_command("truncate -s 0 /etc/default/gentup", "", Quiet);
 }
 
 pub fn fetch_sources(package_vec: &Vec<&str>) {
