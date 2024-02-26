@@ -15,7 +15,7 @@ use std::{
     path::Path,
     process,
 };
-use terminal_spinners::{SpinnerBuilder, BOUNCE};
+use terminal_spinners::{SpinnerBuilder, LINE};
 
 // If the are no packages to update, return false. Or return true otherwise
 // and also display a list of packages pending updates
@@ -31,18 +31,13 @@ pub fn portage_diff(fetch: bool) -> bool {
             let mut pending_updates = Vec::new();
             for line in output.split('\n') {
                 if line.starts_with("[ebuild") {
-                    let mut words = line.split_whitespace();
-                    let mut _word: Option<&str> = Some("");
-                    for _counter in 1..=8 {
-                        _word = words.next();
-                        if _word.eq(&Some("]")) {
-                            break;
-                        }
-                    }
-                    _word = words.next();
+                    let mut words = line.split(']');
+                    let _word = words.next();
+                    let _word = words.next();
                     match _word {
                         Some(_word) => {
-                            pending_updates.push(_word);
+                            let word = _word.split_whitespace().next().unwrap_or("");
+                            pending_updates.push(word);
                         }
                         None => {
                             break;
@@ -80,7 +75,7 @@ pub fn portage_diff(fetch: bool) -> bool {
             true
         }
         (Err(_), _) => {
-            eprintln!("{} Error calling emerge", chevrons::three(Color::Red));
+            eprintln!("{} Error calling emerge", chevrons::eerht(Color::Red));
             false
         }
     }
@@ -114,7 +109,7 @@ pub fn package_is_missing(package: &str) -> bool {
                 println!();
                 println!(
                     "{} {} is not installed",
-                    chevrons::three(Color::Yellow),
+                    chevrons::eerht(Color::Yellow),
                     package
                 );
                 return true;
@@ -125,7 +120,7 @@ pub fn package_is_missing(package: &str) -> bool {
             eprintln!();
             eprintln!(
                 "{} Problem running command: {}",
-                chevrons::three(Color::Red),
+                chevrons::eerht(Color::Red),
                 returned_error
             );
             process::exit(1);
@@ -151,7 +146,7 @@ pub fn package_outdated(package: &str) -> bool {
             }
             println!(
                 "{} {} needs upgrade",
-                chevrons::three(Color::Yellow),
+                chevrons::eerht(Color::Yellow),
                 package
             );
             true
@@ -159,7 +154,7 @@ pub fn package_outdated(package: &str) -> bool {
         (Err(_), returned_error) => {
             eprintln!(
                 "{} Command returned {}",
-                chevrons::three(Color::Red),
+                chevrons::eerht(Color::Red),
                 returned_error
             );
             process::exit(1);
@@ -171,7 +166,7 @@ pub fn package_outdated(package: &str) -> bool {
 //
 pub fn upgrade_package(package: &str) {
     let shellout_result = linux::system_command(
-        &["emerge --quiet -1av ", package].concat(),
+        &["emerge --quiet -1v ", package].concat(),
         "Upgrading package",
         Interactive,
     );
@@ -250,8 +245,9 @@ pub fn depclean(run_type: DepClean) -> (i32, i32) {
                                     _depcolor = Color::Yellow;
                                 }
                                 println!(
-                                    "{} Found {} dependencies to clean, {} of which is a kernel package", 
-                                    chevrons::eerht(_depcolor), numdep, kernels
+                                    "{} Found {} dependencies to clean",
+                                    chevrons::eerht(_depcolor),
+                                    numdep
                                 );
                                 return (numdep, kernels);
                             }
@@ -468,7 +464,9 @@ pub fn check_and_install_deps() {
             }
         }
     }
+}
 
+pub fn check_and_install_optional() {
     // This following list of packages is hardcoded. While this is good for me, other users may be annoyed at
     // this personal choice. So we get this list read in from a text file. Then the user can modify
     // it to their requirements. And if the file does not exist, pre-populate it anyway
@@ -575,7 +573,7 @@ pub fn fetch_sources(package_vec: &Vec<&str>) {
             ebuild_to_fetch,
         ]
         .concat();
-        let handle = SpinnerBuilder::new().spinner(&BOUNCE).text(text).start();
+        let handle = SpinnerBuilder::new().spinner(&LINE).text(text).start();
         let shellout_result = linux::system_command(
             &["emerge --fetchonly --nodeps =", ebuild_to_fetch].concat(),
             "",

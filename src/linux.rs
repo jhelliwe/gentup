@@ -85,7 +85,7 @@ pub fn system_command(
 }
 
 pub fn call_fstrim() {
-    let shellout_results = system_command("fstrim -a -v", "Trimming filesystems", NonInteractive);
+    let shellout_results = system_command("fstrim -a", "Trimming filesystems", NonInteractive);
     exit_on_failure(&shellout_results);
 }
 

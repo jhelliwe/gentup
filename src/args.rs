@@ -8,6 +8,7 @@ pub struct GentupArgs {
     pub cleanup: bool,
     pub force: bool,
     pub separate: bool,
+    pub optional: bool,
 }
 
 pub fn cmdlinargs(args: Args) -> Option<GentupArgs> {
@@ -29,6 +30,7 @@ pub fn cmdlinargs(args: Args) -> Option<GentupArgs> {
         cleanup: false,
         force: false,
         separate: false,
+        optional: false,
     };
 
     let mut first = true;
@@ -46,6 +48,7 @@ pub fn cmdlinargs(args: Args) -> Option<GentupArgs> {
                     -c, --cleanup    Perform cleanup tasks only\n\
                     -f, --force      force eix-sync, bypassing the timestamp check\n\
                     -s  --separate   Perform source fetching separately before update\n\
+                    -o, --optional   Install optional packages from /etc/default/gentup\n\
                     -h, --help       Display this help text, then exit\n\
                     -V, --version    Display the program version\
                 "
@@ -64,6 +67,9 @@ pub fn cmdlinargs(args: Args) -> Option<GentupArgs> {
             }
             "-c" | "--cleanup" => {
                 myargs.cleanup = true;
+            }
+            "-o" | "--optional" => {
+                myargs.optional = true;
             }
             _ => {
                 eprintln!("Error: usage - gentup [--help|--force|--separate|--cleanup|--version]");

@@ -2,7 +2,7 @@
 // Written by John Helliwell
 // https://github.com/jhelliwe
 
-const VERSION: &str = "0.32a";
+const VERSION: &str = "0.33a";
 
 /* This program is free software: you can redistribute it
  * and/or modify it under the terms of the GNU General
@@ -62,6 +62,9 @@ fn main() {
             // This call installs commonly required packages. Some are a direct dependency of this updater,
             // but some are just useful packages I usually install on a brand new Gentoo install
             portage::check_and_install_deps();
+            if arguments.optional {
+                portage::check_and_install_optional();
+            }
 
             // Check that elogv is configured - elogv collects post-installation notes for package
             // updates, so the user is notified about actions they need to take. If elogv is
