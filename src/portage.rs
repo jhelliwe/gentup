@@ -1,14 +1,14 @@
 use crate::{
-    chevrons, linux, portage,
-    prompt::ask_user,
-    tabulate,
+    linux, portage,
+    prompt::{self, ask_user},
     CmdVerbose::*,
     DepClean,
     PromptType::{self, PressCR},
-    RevDep, Upgrade,
+    RevDep, ShellOutResult, Upgrade,
 };
 use crossterm::{cursor, execute, style::Color};
 use filetime::FileTime;
+use regex::Regex;
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Seek, SeekFrom, Write},
@@ -17,16 +17,10 @@ use std::{
 };
 use terminal_spinners::{SpinnerBuilder, LINE};
 
-// If the are no packages to update, return false. Or return true otherwise
-// and also display a list of packages pending updates
+// Are there are pending updates to any installed package? If so display a list of them abd
+// optionally download the source tarballs
 pub fn portage_diff(fetch: bool) -> bool {
-    let shellout_result = linux::system_command(
-        "emerge -puDv @world",
-        "Checking for updates",
-        NonInteractive,
-    );
-    linux::exit_on_failure(&shellout_result);
-    match shellout_result {
+    match upgrade_world(Upgrade::Pretend) {
         (Ok(output), _) => {
             let mut pending_updates = Vec::new();
             for line in output.split('\n') {
@@ -50,32 +44,32 @@ pub fn portage_diff(fetch: bool) -> bool {
                 0 => {
                     println!(
                         "{} There are no pending updates",
-                        chevrons::eerht(Color::Blue)
+                        prompt::revchevrons(Color::Blue)
                     );
                     return false;
                 }
                 1 => {
                     println!(
                         "{} There is 1 package pending an update",
-                        chevrons::eerht(Color::Yellow)
+                        prompt::revchevrons(Color::Yellow)
                     );
                 }
                 _ => {
                     println!(
                         "{} There are {} packages pending updates",
-                        chevrons::eerht(Color::Yellow),
+                        prompt::revchevrons(Color::Yellow),
                         num_updates
                     );
                 }
             }
-            tabulate::package_list(&pending_updates);
+            portage::package_list(&pending_updates);
             if fetch {
                 portage::fetch_sources(&pending_updates);
             }
             true
         }
         (Err(_), _) => {
-            eprintln!("{} Error calling emerge", chevrons::eerht(Color::Red));
+            eprintln!("{} Error calling emerge", prompt::revchevrons(Color::Red));
             false
         }
     }
@@ -91,7 +85,7 @@ pub fn too_recent() -> bool {
     if nowstamp - filestamp < (24 * 60 * 60) {
         println!(
             "{} Last sync was too recent: Skipping sync phase",
-            chevrons::eerht(Color::Yellow)
+            prompt::revchevrons(Color::Yellow)
         );
         true
     } else {
@@ -109,7 +103,7 @@ pub fn package_is_missing(package: &str) -> bool {
                 println!();
                 println!(
                     "{} {} is not installed",
-                    chevrons::eerht(Color::Yellow),
+                    prompt::revchevrons(Color::Yellow),
                     package
                 );
                 return true;
@@ -120,7 +114,7 @@ pub fn package_is_missing(package: &str) -> bool {
             eprintln!();
             eprintln!(
                 "{} Problem running command: {}",
-                chevrons::eerht(Color::Red),
+                prompt::revchevrons(Color::Red),
                 returned_error
             );
             process::exit(1);
@@ -130,7 +124,7 @@ pub fn package_is_missing(package: &str) -> bool {
 
 // This function updates the package tree metadata for Gentoo Linux
 //
-pub fn do_eix_sync() {
+pub fn sync_package_tree() {
     let shellout_result = linux::system_command("eix-sync", "Syncing package tree", NonInteractive);
     linux::exit_on_failure(&shellout_result);
 }
@@ -146,7 +140,7 @@ pub fn package_outdated(package: &str) -> bool {
             }
             println!(
                 "{} {} needs upgrade",
-                chevrons::eerht(Color::Yellow),
+                prompt::revchevrons(Color::Yellow),
                 package
             );
             true
@@ -154,7 +148,7 @@ pub fn package_outdated(package: &str) -> bool {
         (Err(_), returned_error) => {
             eprintln!(
                 "{} Command returned {}",
-                chevrons::eerht(Color::Red),
+                prompt::revchevrons(Color::Red),
                 returned_error
             );
             process::exit(1);
@@ -176,7 +170,7 @@ pub fn upgrade_package(package: &str) {
 // This function performs an update of the world set - i.e a full system upgrade
 // It can optionally run in fetch mode, whereby it merely downloads the ebuilds instead of
 // installing them
-pub fn upgrade_world(run_type: Upgrade) {
+pub fn upgrade_world(run_type: Upgrade) -> ShellOutResult {
     match run_type {
         Upgrade::Real => {
             let shellout_result = linux::system_command(
@@ -185,22 +179,27 @@ pub fn upgrade_world(run_type: Upgrade) {
                 Interactive,
             );
             linux::exit_on_failure(&shellout_result);
+            shellout_result
         }
-        Upgrade::Fetch => {
+        Upgrade::Pretend => {
             let shellout_result = linux::system_command(
-                "emerge --quiet --fetchonly -uNDv --with-bdeps y --changed-use --complete-graph @world",
-                "Fetching sources",
+                "emerge -puDv @world",
+                "Checking for updates",
                 NonInteractive,
             );
             linux::exit_on_failure(&shellout_result);
+            shellout_result
         }
-        _ => {} // Future expansion
+        _ => {
+            linux::system_command("true", "true", NonInteractive) // This code will never be reached but is required
+                                                                  // to avoid compiler warnings.
+        }
     }
 }
 
 // After package installs there are sometimes messages to the user advising them of actions they
 // need to take. These are collected into elog files and displayed here
-pub fn elogv() {
+pub fn elog_viewer() {
     let _shellout_result =
         linux::system_command("elogv", "Checking for new ebuild logs", Interactive);
 }
@@ -210,13 +209,9 @@ pub fn elogv() {
 pub fn depclean(run_type: DepClean) -> (i32, i32) {
     let mut kernels = 0;
     match run_type {
-        DepClean::Pretend | DepClean::KernelPretend => {
+        DepClean::Pretend => {
             let mut _depclean_command = String::new();
-            if run_type == DepClean::Pretend {
-                _depclean_command = "emerge -p --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources".to_string();
-            } else {
-                _depclean_command = "emerge -p --depclean".to_string();
-            }
+            _depclean_command = "emerge -p --depclean".to_string();
             let shellout_result = linux::system_command(
                 &_depclean_command,
                 "Checking for orphaned dependencies",
@@ -246,7 +241,7 @@ pub fn depclean(run_type: DepClean) -> (i32, i32) {
                                 }
                                 println!(
                                     "{} Found {} dependencies to clean",
-                                    chevrons::eerht(_depcolor),
+                                    prompt::revchevrons(_depcolor),
                                     numdep
                                 );
                                 return (numdep, kernels);
@@ -254,7 +249,7 @@ pub fn depclean(run_type: DepClean) -> (i32, i32) {
                             None => {
                                 println!(
                                     "{} There are no orphamed dependencies",
-                                    chevrons::eerht(Color::Green)
+                                    prompt::revchevrons(Color::Green)
                                 );
                                 return (0, kernels);
                             }
@@ -266,7 +261,7 @@ pub fn depclean(run_type: DepClean) -> (i32, i32) {
             (0, 0)
         }
 
-        DepClean::Real => {
+        DepClean::RealExcludeKernels => {
             let shellout_result = linux::system_command(
                 "emerge -a --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
                 "Removing orphaned dependencies",
@@ -280,7 +275,7 @@ pub fn depclean(run_type: DepClean) -> (i32, i32) {
             (0, 0)
         }
 
-        DepClean::Kernel => {
+        DepClean::RealIncludeKernels => {
             let shellout_result = linux::system_command(
                 "emerge --ask --depclean",
                 "Removing orphaned dependencies",
@@ -313,7 +308,7 @@ pub fn revdep_rebuild(run_type: RevDep) -> bool {
                     if line.starts_with("Your system is consistent") {
                         println!(
                             "{} No broken reverse dependencies were found",
-                            chevrons::eerht(Color::Blue)
+                            prompt::revchevrons(Color::Blue)
                         );
                         return true;
                     }
@@ -321,7 +316,7 @@ pub fn revdep_rebuild(run_type: RevDep) -> bool {
             }
             println!(
                 "{} Broken reverse dependencies were found. Initiating revdep-rebuild",
-                chevrons::eerht(Color::Yellow)
+                prompt::revchevrons(Color::Yellow)
             );
             false
         }
@@ -381,18 +376,18 @@ pub fn eix_update() {
 }
 
 // handle_news checks to see if there is unread news and lists it if required
-pub fn handle_news() -> u32 {
+pub fn read_news() -> u32 {
     let mut count: u32 = 0;
     let shellout_result = linux::system_command("eselect news count new", "", Quiet);
     linux::exit_on_failure(&shellout_result);
     if let (Ok(output), _) = shellout_result {
         count = output.trim().parse().unwrap_or(0);
         if count == 0 {
-            println!("{} No news is good news", chevrons::eerht(Color::Blue));
+            println!("{} No news is good news", prompt::revchevrons(Color::Blue));
         } else {
             println!(
                 "{} You have {} news item(s) to read",
-                chevrons::eerht(Color::Yellow),
+                prompt::revchevrons(Color::Yellow),
                 count,
             );
             let _ignore = linux::system_command("eselect news list", "News listing", Interactive);
@@ -403,14 +398,14 @@ pub fn handle_news() -> u32 {
 }
 
 // dispatch_conf handles pending changes to package configuration files
-pub fn dispatch_conf() {
+pub fn update_config_files() {
     let shellout_result =
         linux::system_command("dispatch-conf", "Merge config file changes", Interactive);
     linux::exit_on_failure(&shellout_result);
 }
 
 // Checks and corrects the ELOG configuration in make.conf
-pub fn elog_make_conf() {
+pub fn configure_elogv() {
     let makeconf = fs::read_to_string("/etc/portage/make.conf");
     if let Ok(contents) = makeconf {
         for eachline in contents.lines() {
@@ -418,7 +413,7 @@ pub fn elog_make_conf() {
                 return;
             }
         }
-        println!("{} Configuring elogv", chevrons::three(Color::Yellow));
+        println!("{} Configuring elogv", prompt::chevrons(Color::Yellow));
         let mut file = OpenOptions::new()
             .write(true)
             .append(true)
@@ -445,7 +440,7 @@ pub fn check_and_install_deps() {
         if !Path::new(&package[1]).exists() {
             println!(
                 "{} This updater requires the {} package.",
-                chevrons::eerht(Color::Yellow),
+                prompt::revchevrons(Color::Yellow),
                 &package[0]
             );
             let shellout_result = linux::system_command(
@@ -466,7 +461,7 @@ pub fn check_and_install_deps() {
     }
 }
 
-pub fn check_and_install_optional() {
+pub fn check_and_install_optional_packages() {
     // This following list of packages is hardcoded. While this is good for me, other users may be annoyed at
     // this personal choice. So we get this list read in from a text file. Then the user can modify
     // it to their requirements. And if the file does not exist, pre-populate it anyway
@@ -505,19 +500,19 @@ pub fn check_and_install_optional() {
         }
         println!(
             "{} No /etc/default/gentup configuration file detected",
-            chevrons::eerht(Color::Red),
+            prompt::revchevrons(Color::Red),
         );
         println!(
             "{} Creating /etc/default/gentup with a default package list",
-            chevrons::eerht(Color::Red),
+            prompt::revchevrons(Color::Red),
         );
         println!(
             "{} These packages will be installed by this updater",
-            chevrons::eerht(Color::Red),
+            prompt::revchevrons(Color::Red),
         );
         println!(
             "{} Please customise this list to your preferences, and then re-run this program",
-            chevrons::eerht(Color::Red),
+            prompt::revchevrons(Color::Red),
         );
         process::exit(1);
     }
@@ -531,7 +526,7 @@ pub fn check_and_install_optional() {
         counter += 1;
         println!(
             "{} Checking prerequsite package : {} of {} - {}                    ",
-            chevrons::eerht(Color::Green),
+            prompt::revchevrons(Color::Green),
             counter,
             packages_to_check.len(),
             check
@@ -541,7 +536,7 @@ pub fn check_and_install_optional() {
             println!("                                                      ");
             println!(
                 "{} This program requires {} to be installed. Installing...",
-                chevrons::eerht(Color::Yellow),
+                prompt::revchevrons(Color::Yellow),
                 check
             );
             let cmdline = [
@@ -583,4 +578,57 @@ pub fn fetch_sources(package_vec: &Vec<&str>) {
         handle.done();
     }
     ask_user("Downloads complete", PressCR);
+}
+
+// Shortens a package name for more aesthetic display to user
+// e.g sys-cluster/kube-scheduler-1.29.1::gentoo to sys-cluster/kube-scheduler
+pub fn shorten(packagename: &str) -> String {
+    let regularexpression = Regex::new(r"(.*)-[0-9].*").unwrap();
+    if let Some(capture) = regularexpression.captures(packagename) {
+        capture[1].to_string()
+    } else {
+        packagename.to_string()
+    }
+}
+
+// Calculates the longest length of shortened package names in a vector of absolute package names
+pub fn longest(vec_of_strings: &Vec<&str>) -> u16 {
+    let mut longest_length = 0;
+    let mut _thislen = 0;
+    for string_to_consider in vec_of_strings {
+        let shortened_string = shorten(string_to_consider);
+        _thislen = shortened_string.len() as u16;
+        if _thislen > longest_length {
+            longest_length = _thislen;
+        }
+    }
+    longest_length
+}
+
+// Pretty prints a list of packages
+pub fn package_list(plist: &Vec<&str>) {
+    println!();
+    let spaces: u16 = 4;
+    let max_length = longest(plist);
+    let (width, _height) = linux::termsize();
+    let width = width as u16;
+    let number_of_items_per_line = width / (max_length + spaces);
+    let mut counter = 0;
+    for item in plist {
+        let shortitem = shorten(item);
+        print!("{shortitem}    ");
+        counter += 1;
+        if counter >= number_of_items_per_line {
+            println!();
+            counter = 0;
+            continue;
+        }
+        for _filler in 0..=(max_length - (shortitem.len() as u16)) {
+            print!(" ");
+        }
+    }
+    if counter > 0 {
+        println!();
+    }
+    println!();
 }

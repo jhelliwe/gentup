@@ -1,28 +1,18 @@
 // Parse command line arguments
 
-use crate::VERSION;
+use crate::{GentupArgs, VERSION};
 use std::env::{self, Args};
 
-#[derive(Debug)]
-pub struct GentupArgs {
-    pub cleanup: bool,
-    pub force: bool,
-    pub separate: bool,
-    pub optional: bool,
-}
-
-pub fn cmdlinargs(args: Args) -> Option<GentupArgs> {
+pub fn parsecmdlinargs(args: Args) -> Result<GentupArgs, &'static str> {
     // Check we are root
     match env::var("USER") {
         Ok(val) => {
             if val != "root" {
-                eprintln!("You need to be root to run this");
-                return None;
+                return Err("You need to be root to run this");
             }
         }
         Err(_) => {
-            eprintln!("You need to be root to run this");
-            return None;
+            return Err("You need to be root to run this");
         }
     }
     // Parse command line arguments
@@ -53,11 +43,11 @@ pub fn cmdlinargs(args: Args) -> Option<GentupArgs> {
                     -V, --version    Display the program version\
                 "
                 );
-                return None;
+                return Err("");
             }
             "-V" | "--version" => {
                 println!("gentup version {}", VERSION);
-                return None;
+                return Err("");
             }
             "-f" | "--force" => {
                 myargs.force = true;
@@ -72,10 +62,11 @@ pub fn cmdlinargs(args: Args) -> Option<GentupArgs> {
                 myargs.optional = true;
             }
             _ => {
-                eprintln!("Error: usage - gentup [--help|--force|--separate|--cleanup|--version]");
-                return None;
+                return Err(
+                    "Error: usage - gentup [--help|--force|--separate|--cleanup|--version]",
+                );
             }
         }
     }
-    Some(myargs)
+    Ok(myargs)
 }
