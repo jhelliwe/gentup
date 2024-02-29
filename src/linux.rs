@@ -59,11 +59,11 @@ pub fn system_command(command_line: &str, status: &str, verbose: CmdVerbose) -> 
             }
             Interactive => {
                 println!(
-                    "{} {}: {}{}{}", 
-                    prompt::chevrons(Color::Green), 
-                    status, 
-                    &SetForegroundColor(Color::Cyan), 
-                    command_line, 
+                    "{} {}: {}{}{}",
+                    prompt::chevrons(Color::Green),
+                    status,
+                    &SetForegroundColor(Color::Cyan),
+                    command_line,
                     &SetForegroundColor(Color::Grey)
                 );
                 command.execute_output()
@@ -113,8 +113,7 @@ pub fn exit_on_failure(shellout_result: &ShellOutResult) {
     }
 }
 
-// Returns the name of the Linux distro we are running on. I don't actually check this IS Linux,
-// because there is only me using it, and I'm not likely to run this on a Windows/Mac/FreeBSD box etc
+// Returns the name of the Linux distro we are running on.
 pub fn check_distro(required_distro: &str) -> Result<String, String> {
     let os_release = File::open("/etc/os-release").expect("/etc/os-release should be readable!");
     let readbuf = BufReader::new(os_release);
@@ -131,7 +130,9 @@ pub fn check_distro(required_distro: &str) -> Result<String, String> {
         false => Err([
             "Detected this system is running ",
             &detected_distro,
-            " but this updater only works on Gentoo Linux",
+            " but this updater only works on ",
+            &required_distro,
+            " Linux",
         ]
         .concat()),
     }

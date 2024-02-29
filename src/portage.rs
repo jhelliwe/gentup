@@ -168,8 +168,8 @@ pub fn upgrade_package(package: &str) {
 }
 
 // This function performs an update of the world set - i.e a full system upgrade
-// It can optionally run in fetch mode, whereby it merely downloads the ebuilds instead of
-// installing them
+// or if run in Pretend mode, merely returns the output of the list of packages which would be
+// upgraded
 pub fn upgrade_world(run_type: Upgrade) -> ShellOutResult {
     match run_type {
         Upgrade::Real => {
@@ -210,10 +210,8 @@ pub fn depclean(run_type: DepClean) -> (i32, i32) {
     let mut kernels = 0;
     match run_type {
         DepClean::Pretend => {
-            let mut _depclean_command = String::new();
-            _depclean_command = "emerge -p --depclean".to_string();
             let shellout_result = linux::system_command(
-                &_depclean_command,
+                "emerge -p --depclean",
                 "Checking for orphaned dependencies",
                 NonInteractive,
             );
