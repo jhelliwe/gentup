@@ -96,8 +96,7 @@ pub fn too_recent() -> bool {
 // This function checks that a named package is installed.
 //
 pub fn package_is_missing(package: &str) -> bool {
-    let shellout_result = linux::system_command(&["equery l ", package].concat(), "", Quiet);
-    match shellout_result {
+    match linux::system_command(&["equery l ", package].concat(), "", Quiet) {
         (Ok(_), return_code) => {
             if return_code != 0 {
                 println!();
@@ -125,15 +124,17 @@ pub fn package_is_missing(package: &str) -> bool {
 // This function updates the package tree metadata for Gentoo Linux
 //
 pub fn sync_package_tree() {
-    let shellout_result = linux::system_command("eix-sync", "Syncing package tree", NonInteractive);
-    linux::exit_on_failure(&shellout_result);
+    linux::exit_on_failure(&linux::system_command(
+        "eix-sync",
+        "Syncing package tree",
+        NonInteractive,
+    ));
 }
 
 // This function calls eix to check if the named package is due an upgrade
 //
 pub fn package_outdated(package: &str) -> bool {
-    let shellout_result = linux::system_command(&["eix -u ", package].concat(), "", Quiet);
-    match shellout_result {
+    match linux::system_command(&["eix -u ", package].concat(), "", Quiet) {
         (Ok(_), return_status) => {
             if return_status != 0 {
                 return false;
@@ -159,12 +160,11 @@ pub fn package_outdated(package: &str) -> bool {
 // This function performs an update of the named package
 //
 pub fn upgrade_package(package: &str) {
-    let shellout_result = linux::system_command(
+    linux::exit_on_failure(&linux::system_command(
         &["emerge --quiet -1v ", package].concat(),
         "Upgrading package",
         Interactive,
-    );
-    linux::exit_on_failure(&shellout_result);
+    ));
 }
 
 // This function performs an update of the world set - i.e a full system upgrade
@@ -260,12 +260,11 @@ pub fn depclean(run_type: DepClean) -> (i32, i32) {
         }
 
         DepClean::RealExcludeKernels => {
-            let shellout_result = linux::system_command(
+            linux::exit_on_failure(&linux::system_command(
                 "emerge -a --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
                 "Removing orphaned dependencies",
                 Interactive,
-            );
-            linux::exit_on_failure(&shellout_result);
+            ));
             ask_user(
                 "Please verify the output of emerge --depclean above",
                 PromptType::PressCR,
@@ -274,12 +273,11 @@ pub fn depclean(run_type: DepClean) -> (i32, i32) {
         }
 
         DepClean::RealIncludeKernels => {
-            let shellout_result = linux::system_command(
+            linux::exit_on_failure(&linux::system_command(
                 "emerge --ask --depclean",
                 "Removing orphaned dependencies",
                 Interactive,
-            );
-            linux::exit_on_failure(&shellout_result);
+            ));
             ask_user(
                 "Please verify the output of emerge --depclean above",
                 PromptType::PressCR,
@@ -319,12 +317,11 @@ pub fn revdep_rebuild(run_type: RevDep) -> bool {
             false
         }
         RevDep::Real => {
-            let shellout_result = linux::system_command(
+            linux::exit_on_failure(&linux::system_command(
                 "revdep-rebuild",
                 "Rebuilding reverse dependencies",
                 Interactive,
-            );
-            linux::exit_on_failure(&shellout_result);
+            ));
             ask_user(
                 "Please verify the output of revdep-rebuild above",
                 PromptType::PressCR,
@@ -337,40 +334,39 @@ pub fn revdep_rebuild(run_type: RevDep) -> bool {
 
 // This function calls the portage config sanity checker
 pub fn eix_test_obsolete() {
-    let shellout_result = linux::system_command(
+    linux::exit_on_failure(&linux::system_command(
         "eix-test-obsolete",
         "Checking obsolete configs",
         Interactive,
-    );
-    linux::exit_on_failure(&shellout_result);
+    ));
 }
 
 // This function cleans up old kernels
 pub fn eclean_kernel() {
-    let shellout_result =
-        linux::system_command("eclean-kernel -Aa", "Cleaning old kernels", Interactive);
-    linux::exit_on_failure(&shellout_result);
+    linux::exit_on_failure(&linux::system_command(
+        "eclean-kernel -Aa",
+        "Cleaning old kernels",
+        Interactive,
+    ));
 }
 
 // This function removes old unused package tarballs
 //
 pub fn eclean_distfiles() {
-    let shellout_result = linux::system_command(
+    linux::exit_on_failure(&linux::system_command(
         "eclean -d distfiles",
         "Cleaning unused distfiles",
         Interactive,
-    );
-    linux::exit_on_failure(&shellout_result);
+    ));
 }
 
 // eix_update resynchronises the eix database with the state of the currently installed packages
 pub fn eix_update() {
-    let shellout_result = linux::system_command(
+    linux::exit_on_failure(&linux::system_command(
         "eix-update",
         "Initialising package database",
         NonInteractive,
-    );
-    linux::exit_on_failure(&shellout_result);
+    ));
 }
 
 // handle_news checks to see if there is unread news and lists it if required
@@ -397,9 +393,11 @@ pub fn read_news() -> u32 {
 
 // dispatch_conf handles pending changes to package configuration files
 pub fn update_config_files() {
-    let shellout_result =
-        linux::system_command("dispatch-conf", "Merge config file changes", Interactive);
-    linux::exit_on_failure(&shellout_result);
+    linux::exit_on_failure(&linux::system_command(
+        "dispatch-conf",
+        "Merge config file changes",
+        Interactive,
+    ));
 }
 
 // Checks and corrects the ELOG configuration in make.conf
@@ -441,19 +439,17 @@ pub fn check_and_install_deps() {
                 prompt::revchevrons(Color::Yellow),
                 &package[0]
             );
-            let shellout_result = linux::system_command(
+            linux::exit_on_failure(&linux::system_command(
                 &["emerge --quiet -v ", &package[0]].concat(),
                 &["Installing ", &package[0]].concat(),
                 NonInteractive,
-            );
-            linux::exit_on_failure(&shellout_result);
+            ));
             if !&package[2].eq("") {
-                let shellout_result = linux::system_command(
+                linux::exit_on_failure(&linux::system_command(
                     package[2],
                     "Post installation configuration",
                     NonInteractive,
-                );
-                linux::exit_on_failure(&shellout_result);
+                ));
             }
         }
     }
@@ -542,14 +538,11 @@ pub fn check_and_install_optional_packages() {
                 check,
             ]
             .concat();
-            let shellout_result =
-                linux::system_command(&cmdline, "Installing missing package", Interactive);
-            linux::exit_on_failure(&shellout_result);
+            linux::exit_on_failure(&linux::system_command(&cmdline, "Installing missing package", Interactive));
         }
     }
     println!("                                                                   ");
     let _ignore = execute!(io::stdout(), cursor::MoveUp(1));
-    let _ignore = linux::system_command("truncate -s 0 /etc/default/gentup", "", Quiet);
 }
 
 pub fn fetch_sources(package_vec: &Vec<&str>) {
@@ -567,12 +560,11 @@ pub fn fetch_sources(package_vec: &Vec<&str>) {
         ]
         .concat();
         let handle = SpinnerBuilder::new().spinner(&LINE).text(text).start();
-        let shellout_result = linux::system_command(
+        linux::exit_on_failure(&linux::system_command(
             &["emerge --fetchonly --nodeps =", ebuild_to_fetch].concat(),
             "",
             Quiet,
-        );
-        linux::exit_on_failure(&shellout_result);
+        ));
         handle.done();
     }
     ask_user("Downloads complete", PressCR);

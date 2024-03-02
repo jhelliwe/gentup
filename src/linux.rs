@@ -85,12 +85,20 @@ pub fn system_command(command_line: &str, status: &str, verbose: CmdVerbose) -> 
 }
 
 pub fn call_fstrim() {
-    let shellout_results = system_command("fstrim -a", "Trimming filesystems", NonInteractive);
-    exit_on_failure(&shellout_results);
+    exit_on_failure(&system_command(
+        "fstrim -a",
+        "Trimming filesystems",
+        NonInteractive,
+    ));
 }
 
 // This function takes the result from the last system command execution and exits if there was a
 // failure running the previous command
+// It takes a ShellOutResult from the system_command, therefore it can be "wrapped" around
+// system_command, e.g exit_on_failure(&system_command("some command"....));
+// See the function call_fstrim above for an example of this
+// This design decision is so that failed system_commands can be handled by the calling code if
+// required
 pub fn exit_on_failure(shellout_result: &ShellOutResult) {
     match shellout_result {
         (Ok(_), status) => {
