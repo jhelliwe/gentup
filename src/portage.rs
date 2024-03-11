@@ -19,7 +19,7 @@ use terminal_spinners::{SpinnerBuilder, LINE};
 
 // Are there are pending updates to any installed package? If so display a list of them abd
 // optionally download the source tarballs
-pub fn portage_diff(fetch: bool) -> bool {
+pub fn show_pending_updates(fetch: bool) -> bool {
     match upgrade_world(Upgrade::Pretend) {
         (Ok(output), _) => {
             let mut pending_updates = Vec::new();
@@ -140,7 +140,7 @@ pub fn package_outdated(package: &str) -> bool {
                 return false;
             }
             println!(
-                "{} {} needs upgrade",
+                "{} {} needs to be upgraded",
                 prompt::revchevrons(Color::Yellow),
                 package
             );
@@ -411,7 +411,6 @@ pub fn configure_elogv() {
         }
         println!("{} Configuring elogv", prompt::chevrons(Color::Yellow));
         let mut file = OpenOptions::new()
-            .write(true)
             .append(true)
             .open("/etc/portage/make.conf")
             .unwrap();
@@ -538,7 +537,11 @@ pub fn check_and_install_optional_packages() {
                 check,
             ]
             .concat();
-            linux::exit_on_failure(&linux::system_command(&cmdline, "Installing missing package", Interactive));
+            linux::exit_on_failure(&linux::system_command(
+                &cmdline,
+                "Installing missing package",
+                Interactive,
+            ));
         }
     }
     println!("                                                                   ");

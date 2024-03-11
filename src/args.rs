@@ -3,16 +3,16 @@
 use crate::{GentupArgs, VERSION};
 use std::env::{self, Args};
 
-pub fn parsecmdlinargs(args: Args) -> Result<GentupArgs, &'static str> {
+pub fn parsecmdlinargs(args: Args) -> Result<GentupArgs, String> {
     // Check we are root
     match env::var("USER") {
         Ok(val) => {
             if val != "root" {
-                return Err("You need to be root to run this");
+                return Err("You need to be root to run this".to_string());
             }
         }
         Err(_) => {
-            return Err("You need to be root to run this");
+            return Err("You need to be root to run this".to_string());
         }
     }
     // Parse command line arguments
@@ -31,8 +31,7 @@ pub fn parsecmdlinargs(args: Args) -> Result<GentupArgs, &'static str> {
         }
         match &arg[..] {
             "-h" | "--help" => {
-                println!(
-                    "Usage:\n\n \
+                return Err("Usage:\n\n \
                     gentup [options]\n \
                     Options:\n\n\
                     -c, --cleanup    Perform cleanup tasks only\n\
@@ -42,12 +41,10 @@ pub fn parsecmdlinargs(args: Args) -> Result<GentupArgs, &'static str> {
                     -h, --help       Display this help text, then exit\n\
                     -V, --version    Display the program version\
                 "
-                );
-                return Err("");
+                .to_string());
             }
             "-V" | "--version" => {
-                println!("gentup version {}", VERSION);
-                return Err("");
+                return Err(format!("gentup version {}", VERSION));
             }
             "-f" | "--force" => {
                 myargs.force = true;
@@ -63,7 +60,8 @@ pub fn parsecmdlinargs(args: Args) -> Result<GentupArgs, &'static str> {
             }
             _ => {
                 return Err(
-                    "Error: usage - gentup [--help|--force|--separate|--cleanup|--version]",
+                    "Error: usage - gentup [--help|--force|--separate|--cleanup|--version]"
+                        .to_string(),
                 );
             }
         }

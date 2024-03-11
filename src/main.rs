@@ -2,7 +2,7 @@
 // Written by John Helliwell
 // https://github.com/jhelliwe
 
-const VERSION: &str = "0.36a";
+const VERSION: &str = "0.37a";
 
 /* This program is free software: you can redistribute it
  * and/or modify it under the terms of the GNU General
@@ -95,7 +95,7 @@ fn main() {
 
                 // Present a list of packages to be updated to the screen
                 // If there are no packages pending updates, we can quit at this stage
-                if !portage::portage_diff(arguments.separate) && !arguments.force {
+                if !portage::show_pending_updates(arguments.separate) && !arguments.force {
                     process::exit(0);
                 }
                 if !arguments.separate {
@@ -183,9 +183,7 @@ fn main() {
         }
         Err(error) => {
             // Command line arguments are incorrect, so exit
-            if error.ne("") {
-                eprintln!("{}", error);
-            }
+            eprintln!("{}", error);
             process::exit(1);
         }
     }
