@@ -1,10 +1,13 @@
+// This source file contains logic which interacts with the Portage package manager
+
 use crate::{
     linux, portage,
     prompt::{self, ask_user},
     CmdVerbose::*,
-    DepClean,
+    Orphans,
     PromptType::{self, PressCR},
-    RevDep, ShellOutResult, Upgrade,
+    ShellOutResult,
+    Upgrade::*,
 };
 use crossterm::{cursor, execute, style::Color};
 use filetime::FileTime;
@@ -17,10 +20,167 @@ use std::{
 };
 use terminal_spinners::{SpinnerBuilder, LINE};
 
-// Are there are pending updates to any installed package? If so display a list of them abd
-// optionally download the source tarballs
-pub fn show_pending_updates(fetch: bool) -> bool {
-    match upgrade_world(Upgrade::Pretend) {
+// Here are defined the behaviours of the package Upgrade methods
+// Pretend lets the caller see what would be upgraded without actually performing an Upgrade
+// Real and its derivatives do perform the actual package updates
+#[derive(PartialEq)]
+pub enum Upgrade {
+    Pretend,
+    Real,
+    RealExcludeKernels,
+    RealIncludeKernels,
+}
+
+impl Upgrade {
+    // Implementation steps for performing a full system update
+    pub fn all_packages(run_type: Self) -> ShellOutResult {
+        match run_type {
+            Real => linux::system_command(
+                "emerge --quiet -uNDv --with-bdeps y --changed-use --complete-graph @world",
+                "Updating world set",
+                Interactive,
+            ),
+            Pretend => linux::system_command(
+                "emerge -puDv @world",
+                "Checking for updates",
+                NonInteractive,
+            ),
+            _ => (Ok(String::new()), 0),
+        }
+    }
+
+    // Implementation steps to clean orphaned packages
+    pub fn clean(run_type: Self) -> Orphans {
+        let mut kernels = 0;
+        match run_type {
+            Pretend => {
+                let shellout_result = linux::system_command(
+                    "emerge -p --depclean",
+                    "Checking for orphaned dependencies",
+                    NonInteractive,
+                );
+                linux::exit_on_failure(&shellout_result);
+                if let (Ok(output), _) = shellout_result {
+                    let lines = output.split('\n');
+                    for line in lines {
+                        if line.contains("kernel") {
+                            kernels += 1;
+                        }
+                        if line.starts_with("Number to remove") {
+                            let mut words = line.split_whitespace();
+                            let mut word: Option<&str> = Some("");
+                            for _counter in 0..=3 {
+                                word = words.next();
+                            }
+                            match word {
+                                Some(word) => {
+                                    let numdep = word.parse().unwrap();
+                                    let mut _depcolor = Color::Green;
+                                    if numdep == 0 {
+                                        _depcolor = Color::Blue;
+                                    } else {
+                                        _depcolor = Color::Yellow;
+                                    }
+                                    println!(
+                                        "{} Found {} dependencies to clean",
+                                        prompt::revchevrons(_depcolor),
+                                        numdep
+                                    );
+                                    return (numdep, kernels);
+                                }
+                                None => {
+                                    println!(
+                                        "{} There are no orphamed dependencies",
+                                        prompt::revchevrons(Color::Green)
+                                    );
+                                    return (0, kernels);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                (0, 0)
+            }
+
+            RealExcludeKernels => {
+                linux::exit_on_failure(&linux::system_command(
+                "emerge -a --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
+                "Removing orphaned dependencies",
+                Interactive,
+            ));
+                ask_user(
+                    "Please verify the output of emerge --depclean above",
+                    PromptType::PressCR,
+                );
+                (0, 0)
+            }
+
+            RealIncludeKernels => {
+                linux::exit_on_failure(&linux::system_command(
+                    "emerge --ask --depclean",
+                    "Removing orphaned dependencies",
+                    Interactive,
+                ));
+                ask_user(
+                    "Please verify the output of emerge --depclean above",
+                    PromptType::PressCR,
+                );
+                (0, 0)
+            }
+            _ => (0, 0),
+        }
+    }
+
+    // Check for broken reverse dependences and rebuild
+    pub fn rebuild(run_type: Self) -> bool {
+        match run_type {
+            Pretend => {
+                let shellout_result = linux::system_command(
+                    "revdep-rebuild -ip",
+                    "Checking reverse dependencies",
+                    NonInteractive,
+                );
+                linux::exit_on_failure(&shellout_result);
+                if let (Ok(output), _) = shellout_result {
+                    let lines = output.split('\n');
+                    for line in lines {
+                        if line.starts_with("Your system is consistent") {
+                            println!(
+                                "{} No broken reverse dependencies were found",
+                                prompt::revchevrons(Color::Blue)
+                            );
+                            return true;
+                        }
+                    }
+                }
+                println!(
+                    "{} Broken reverse dependencies were found. Initiating revdep-rebuild",
+                    prompt::revchevrons(Color::Yellow)
+                );
+                false
+            }
+            Real => {
+                linux::exit_on_failure(&linux::system_command(
+                    "revdep-rebuild",
+                    "Rebuilding reverse dependencies",
+                    Interactive,
+                ));
+                ask_user(
+                    "Please verify the output of revdep-rebuild above",
+                    PromptType::PressCR,
+                );
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+// List and fetch pending updates. Returns "true" if there are any pending updates
+// Returns false if there are no pending updates
+pub fn get_pending_updates(fetch: bool) -> bool {
+    match Upgrade::all_packages(Pretend) {
         (Ok(output), _) => {
             let mut pending_updates = Vec::new();
             for line in output.split('\n') {
@@ -167,169 +327,11 @@ pub fn upgrade_package(package: &str) {
     ));
 }
 
-// This function performs an update of the world set - i.e a full system upgrade
-// or if run in Pretend mode, merely returns the output of the list of packages which would be
-// upgraded
-pub fn upgrade_world(run_type: Upgrade) -> ShellOutResult {
-    match run_type {
-        Upgrade::Real => {
-            let shellout_result = linux::system_command(
-                "emerge --quiet -uNDv --with-bdeps y --changed-use --complete-graph @world",
-                "Updating world set",
-                Interactive,
-            );
-            linux::exit_on_failure(&shellout_result);
-            shellout_result
-        }
-        Upgrade::Pretend => {
-            let shellout_result = linux::system_command(
-                "emerge -puDv @world",
-                "Checking for updates",
-                NonInteractive,
-            );
-            linux::exit_on_failure(&shellout_result);
-            shellout_result
-        }
-        _ => {
-            linux::system_command("true", "true", NonInteractive) // This code will never be reached but is required
-                                                                  // to avoid compiler warnings.
-        }
-    }
-}
-
 // After package installs there are sometimes messages to the user advising them of actions they
 // need to take. These are collected into elog files and displayed here
 pub fn elog_viewer() {
     let _shellout_result =
         linux::system_command("elogv", "Checking for new ebuild logs", Interactive);
-}
-
-// This function does a depclean
-//
-pub fn depclean(run_type: DepClean) -> (i32, i32) {
-    let mut kernels = 0;
-    match run_type {
-        DepClean::Pretend => {
-            let shellout_result = linux::system_command(
-                "emerge -p --depclean",
-                "Checking for orphaned dependencies",
-                NonInteractive,
-            );
-            linux::exit_on_failure(&shellout_result);
-            if let (Ok(output), _) = shellout_result {
-                let lines = output.split('\n');
-                for line in lines {
-                    if line.contains("kernel") {
-                        kernels += 1;
-                    }
-                    if line.starts_with("Number to remove") {
-                        let mut words = line.split_whitespace();
-                        let mut word: Option<&str> = Some("");
-                        for _counter in 0..=3 {
-                            word = words.next();
-                        }
-                        match word {
-                            Some(word) => {
-                                let numdep = word.parse().unwrap();
-                                let mut _depcolor = Color::Green;
-                                if numdep == 0 {
-                                    _depcolor = Color::Blue;
-                                } else {
-                                    _depcolor = Color::Yellow;
-                                }
-                                println!(
-                                    "{} Found {} dependencies to clean",
-                                    prompt::revchevrons(_depcolor),
-                                    numdep
-                                );
-                                return (numdep, kernels);
-                            }
-                            None => {
-                                println!(
-                                    "{} There are no orphamed dependencies",
-                                    prompt::revchevrons(Color::Green)
-                                );
-                                return (0, kernels);
-                            }
-                        }
-                    }
-                }
-            }
-
-            (0, 0)
-        }
-
-        DepClean::RealExcludeKernels => {
-            linux::exit_on_failure(&linux::system_command(
-                "emerge -a --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
-                "Removing orphaned dependencies",
-                Interactive,
-            ));
-            ask_user(
-                "Please verify the output of emerge --depclean above",
-                PromptType::PressCR,
-            );
-            (0, 0)
-        }
-
-        DepClean::RealIncludeKernels => {
-            linux::exit_on_failure(&linux::system_command(
-                "emerge --ask --depclean",
-                "Removing orphaned dependencies",
-                Interactive,
-            ));
-            ask_user(
-                "Please verify the output of emerge --depclean above",
-                PromptType::PressCR,
-            );
-            (0, 0)
-        }
-        _ => (0, 0),
-    }
-}
-
-// Reverse dependency check
-pub fn revdep_rebuild(run_type: RevDep) -> bool {
-    match run_type {
-        RevDep::Pretend => {
-            let shellout_result = linux::system_command(
-                "revdep-rebuild -ip",
-                "Checking reverse dependencies",
-                NonInteractive,
-            );
-            linux::exit_on_failure(&shellout_result);
-            if let (Ok(output), _) = shellout_result {
-                let lines = output.split('\n');
-                for line in lines {
-                    if line.starts_with("Your system is consistent") {
-                        println!(
-                            "{} No broken reverse dependencies were found",
-                            prompt::revchevrons(Color::Blue)
-                        );
-                        return true;
-                    }
-                }
-            }
-            println!(
-                "{} Broken reverse dependencies were found. Initiating revdep-rebuild",
-                prompt::revchevrons(Color::Yellow)
-            );
-            false
-        }
-        RevDep::Real => {
-            linux::exit_on_failure(&linux::system_command(
-                "revdep-rebuild",
-                "Rebuilding reverse dependencies",
-                Interactive,
-            ));
-            ask_user(
-                "Please verify the output of revdep-rebuild above",
-                PromptType::PressCR,
-            );
-            true
-        }
-        _ => false,
-    }
 }
 
 // This function calls the portage config sanity checker

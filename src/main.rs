@@ -2,7 +2,7 @@
 // Written by John Helliwell
 // https://github.com/jhelliwe
 
-const VERSION: &str = "0.37a";
+const VERSION: &str = "0.38a";
 
 /* This program is free software: you can redistribute it
  * and/or modify it under the terms of the GNU General
@@ -18,27 +18,44 @@ const VERSION: &str = "0.37a";
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
+// Declare the modules used by the project
 pub mod args; // Deals with command line arguments
 pub mod linux; // Interacts with the operating system
 pub mod portage; // Interacts with the Portage package manager
 pub mod prompt; // Asks the user permission to continue
-pub mod typedefs; // Common type definitions
-
-use crate::typedefs::*;
+use crate::{args::GentupArgs, linux::exit_on_failure, portage::Upgrade, Upgrade::*};
 use crossterm::{
     cursor, execute,
     style::Color,
     terminal::{self, ClearType},
 };
-use std::{env, io, process};
+use std::{env, error::Error, io, process};
 
+// Declare new variable types used by the project
+#[derive(PartialEq)]
+pub enum PromptType {
+    Review,
+    PressCR,
+}
+pub enum CmdVerbose {
+    NonInteractive,
+    Interactive,
+    Quiet,
+}
+pub type RevDep = Upgrade;
+pub type Dep = Upgrade;
+pub type Orphans = (i32, i32);
+pub type ShellOutResult = (Result<String, Box<dyn Error>>, i32);
+
+// main is the entry point for the compiled binary executable
 fn main() {
-    // Call a functon to parse the command line arguments,
-    // returning the Ok veriant (and the args in a struct)
-    // if the arguments were parsable, or the Err variant if
-    // the arguments were invalid
-    let optarg = args::parsecmdlinargs(env::args());
-    match optarg {
+    // First, parse the command line arguments
+    match GentupArgs::parse(env::args()) {
+        Err(error) => {
+            // Command line arguments are incorrect - inform the user and exit
+            eprintln!("{}", error);
+            process::exit(1);
+        }
         Ok(arguments) => {
             // Clear screen
             let _ignore = execute!(
@@ -61,9 +78,7 @@ fn main() {
             // This call installs required packages which are a direct dependency of this updater,
             portage::check_and_install_deps();
             if arguments.optional {
-                // This call installed optionally required packages which are not absolutely
-                // required by this installer, but which are sensible defaults for a Gentoo
-                // installation.
+                // This call installs optional packages useful for a new Gentoo installation
                 portage::check_and_install_optional_packages();
             }
 
@@ -83,8 +98,10 @@ fn main() {
                 }
 
                 /* It necessary to update the package manager (sys-apps/portage) first before updating
-                 * the entire system (and the same again for gcc).
+                 * the entire system and the same again for gcc since this is a source based
+                 * distribution!
                  */
+
                 if portage::package_outdated("sys-apps/portage") {
                     portage::upgrade_package("sys-apps/portage");
                 }
@@ -95,10 +112,10 @@ fn main() {
 
                 // Present a list of packages to be updated to the screen
                 // If there are no packages pending updates, we can quit at this stage
-                if !portage::show_pending_updates(arguments.separate) && !arguments.force {
+                if !arguments.force && !portage::get_pending_updates(arguments.background_fetch) {
                     process::exit(0);
                 }
-                if !arguments.separate {
+                if !arguments.background_fetch {
                     prompt::ask_user("Please review", PromptType::PressCR);
                 }
 
@@ -109,10 +126,7 @@ fn main() {
                 }
 
                 // All pre-requisites done - time for upgrade
-                if let (Err(_), _) = portage::upgrade_world(Upgrade::Real) {
-                    eprintln!("{} Error calling emerge", prompt::revchevrons(Color::Red));
-                    process::exit(1);
-                }
+                exit_on_failure(&Upgrade::all_packages(Real));
 
                 // Handle updating package config files
                 portage::update_config_files();
@@ -128,7 +142,7 @@ fn main() {
             // sense if it is still the running kernel, so there is logic in here to prevent that.
             // After all, if the kernel we have just installed fails to boot, we need to leave the
             // previous one around for recovery.
-            let (orphans, kernels) = portage::depclean(DepClean::Pretend); // Pretend mode only lists orphaned deps
+            let (orphans, kernels) = Dep::clean(Pretend); // Pretend mode only lists orphaned deps
             if !arguments.cleanup && kernels > 0 {
                 println!(
                     "{} Upgrade complete. You should reboot into your new kernel and rerun this utility with the --cleanup flag", 
@@ -140,17 +154,17 @@ fn main() {
                 // We only depclean kernel packages in cleanup mode - This is to prevent the issue of
                 // depclean removing the currently running kernel immedately after a kernel upgrade
                 if arguments.cleanup && kernels > 0 {
-                    portage::depclean(DepClean::RealIncludeKernels); // depcleans everything including old kernel packages
+                    Dep::clean(RealIncludeKernels); // depcleans everything including old kernel packages
                 } else {
-                    portage::depclean(DepClean::RealExcludeKernels); // depcleans everything excluding old kernel packages
+                    Dep::clean(RealExcludeKernels); // depcleans everything excluding old kernel packages
                 }
             }
 
-            // Check reverse dependencies
-            if !portage::revdep_rebuild(RevDep::Pretend)
+            // Check and rebuild any broken reverse dependencies
+            if !RevDep::rebuild(Pretend)
                 && prompt::ask_user("Perform reverse dependency rebuild?", PromptType::Review)
             {
-                portage::revdep_rebuild(RevDep::Real);
+                RevDep::rebuild(Real);
             }
 
             // Check the sanity of the /etc/portage configuration files. These can become complex
@@ -174,17 +188,13 @@ fn main() {
 
             // fstrim - if this is an SSD or thinly provisioned filesystem, send DISCARDs so that
             // the backing store can recover any freed-up blocks
-            let ssd = linux::is_rotational() == 0;
-            if ssd && prompt::ask_user("Reclaim free blocks?", PromptType::Review) {
+            if prompt::ask_user("Reclaim free blocks?", PromptType::Review)
+                && linux::is_rotational() == 0
+            {
                 linux::call_fstrim();
             }
 
             println!("{} All done!!!", prompt::chevrons(Color::Green));
-        }
-        Err(error) => {
-            // Command line arguments are incorrect, so exit
-            eprintln!("{}", error);
-            process::exit(1);
         }
     }
 }

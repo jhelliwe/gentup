@@ -9,8 +9,8 @@ Gentoo installation up to date.
 
 Features:
 - This updater depends on eix, eclean-kernel, gentoolkit and elogv, so if these are not installed, the updater will install them.
-- Next, the updater installs a set of commonly installed packages, useful for a brand new Gentoo install. This step is only
-  performed the first time the updater is ever run. The list of packages is editable in the file /etc/default/gentup
+- Next, the updater optionally installs a set of commonly installed packages, useful for a brand new Gentoo install.
+  The list of packages is editable in the file /etc/default/gentup
 - The updater will check to see if the last "emerge --sync" was too recent to avoid syncing too often
 - The updater lists any packages due an upgrade, and optionally pre-fetches the package sources
 - The updater presents a list of Gentoo news articles to the user
