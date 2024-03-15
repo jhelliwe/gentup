@@ -2,16 +2,15 @@ use crate::Prompt::*;
 use crossterm::style::{Color, SetForegroundColor};
 use std::{io, process};
 
+// Prompt the user to continue, skip, quit etc
 #[derive(PartialEq)]
 pub enum Prompt {
-    Review,
-    PressCR,
+    SkipReturnQuit,
+    ReturnOrQuit,
 }
-
-// Prompt the user to continue, skip, quit etc
 impl Prompt {
-    pub fn user(userinput: &str, mode: Self) -> bool {
-        if mode != PressCR {
+    pub fn askuser(self, userinput: &str) -> bool {
+        if self != ReturnOrQuit {
             println!(
                 "{} {}: Press return to continue, s to skip, q to quit",
                 chevrons(Color::Green),

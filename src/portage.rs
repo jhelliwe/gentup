@@ -1,8 +1,7 @@
 // This source file contains logic which interacts with the Portage package manager
 
 use crate::{
-    linux, linux::CouldFail, linux::OsCall, linux::ShellOutResult, portage, prompt,
-    prompt::Prompt::*, Prompt,
+    linux, linux::CouldFail, linux::OsCall, linux::ShellOutResult, portage, prompt, Prompt,
 };
 use crossterm::{cursor, execute, style::Color};
 use filetime::FileTime;
@@ -27,8 +26,7 @@ pub enum Emerge {
     RealIncludeKernels,
 }
 pub type Orphans = (i32, String);
-
-impl Emerge {
+impl Emerge { 
     // Implementation steps for performing an update of the @world set (full system update)
     pub fn update_world(self) -> ShellOutResult {
         match self {
@@ -99,10 +97,7 @@ impl Emerge {
                 "emerge -a --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
                 "Removing orphaned dependencies",
             ).exit_if_failed();
-                Prompt::user(
-                    "Please verify the output of emerge --depclean above",
-                    PressCR,
-                );
+                Prompt::ReturnOrQuit.askuser("Please verify the output of emerge --depclean above");
                 (0, String::new())
             }
 
@@ -110,10 +105,7 @@ impl Emerge {
                 let _ = OsCall::Interactive
                     .execute("emerge --ask --depclean", "Removing orphaned dependencies")
                     .exit_if_failed();
-                Prompt::user(
-                    "Please verify the output of emerge --depclean above",
-                    PressCR,
-                );
+                Prompt::ReturnOrQuit.askuser("Please verify the output of emerge --depclean above");
                 (0, String::new())
             }
             _ => (0, String::new()),
@@ -149,7 +141,7 @@ impl Emerge {
                 let _ = OsCall::Interactive
                     .execute("revdep-rebuild", "Rebuilding reverse dependencies")
                     .exit_if_failed();
-                Prompt::user("Please verify the output of revdep-rebuild above", PressCR);
+                Prompt::ReturnOrQuit.askuser("Please verify the output of revdep-rebuild above");
                 true
             }
             _ => false,

@@ -13,19 +13,21 @@ use std::{
 use terminal_spinners::{SpinnerBuilder, LINE};
 
 // Define a new type, OsCall which executes an external OS command
+//
 // OsCall has a method .execute() which returns a ShellOutResult wrapping the stdout from the
 // command and the return code with a Result enum. ShellOutResult has a method .exit_if_failed
-// which will handle fatal errors from an OsCall
+// which will handle fatal errors from an OsCall, or alternatively the calling function can handle
+// the Err variant itself
 pub enum OsCall {
-    NonInteractive,
-    Interactive,
-    Quiet,
+    Interactive, // stdin, stdout and stderr are left attached to the tty allowing the user to interact
+    NonInteractive, // stdout is piped allowing OsCall to capture the stdout and return it as a String
+    Quiet, // stdout and stderr are piped allowing OsCall to capture them and return them in a String
 }
-pub type ShellOutResult = Result<(String, i32), Box<dyn Error>>;
-pub trait CouldFail {
+pub type ShellOutResult = Result<(String, i32), Box<dyn Error>>; // ShellOutResult is returned from an OsCall
+pub trait CouldFail { // OsCalls could fail, and the failures need to be handled
     fn exit_if_failed(self) -> ShellOutResult;
 }
-impl CouldFail for ShellOutResult {
+impl CouldFail for ShellOutResult { // Generic handler for failed OsCalls
     fn exit_if_failed(self) -> ShellOutResult {
         match self {
             Ok((_, status)) => {
@@ -49,7 +51,7 @@ impl CouldFail for ShellOutResult {
         self
     }
 }
-impl OsCall {
+impl OsCall { // Fork and exec an external command. Waits for completion
     pub fn execute(self, command_line: &str, status: &str) -> ShellOutResult {
         let mut command_words = Vec::new();
         for word in command_line.split_whitespace() {

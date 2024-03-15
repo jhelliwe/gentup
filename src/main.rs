@@ -2,7 +2,7 @@
 // Written by John Helliwell
 // https://github.com/jhelliwe
 
-const VERSION: &str = "0.39a";
+const VERSION: &str = "0.40a";
 
 /* This program is free software: you can redistribute it
  * and/or modify it under the terms of the GNU General
@@ -23,12 +23,7 @@ pub mod args; // Deals with command line arguments
 pub mod linux; // Interacts with the operating system
 pub mod portage; // Interacts with the Portage package manager
 pub mod prompt; // Asks the user permission to continue
-use crate::{
-    args::GentupArgs,
-    linux::CouldFail,
-    portage::Emerge,
-    prompt::Prompt::{self, *},
-};
+use crate::{args::GentupArgs, linux::CouldFail, portage::Emerge, prompt::Prompt};
 use crossterm::{
     cursor, execute,
     style::Color,
@@ -103,18 +98,18 @@ fn main() {
                 if !arguments.force && !portage::get_pending_updates(arguments.background_fetch) {
                     process::exit(0);
                 }
-                Prompt::user("Please review", PressCR);
+                Prompt::ReturnOrQuit.askuser("Please review");
 
                 // Check the news - if there is news, list and read it
                 println!("{} Checking Gentoo news", prompt::chevrons(Color::Green));
                 if portage::read_news() > 0 {
-                    Prompt::user("Press CR", PressCR);
+                    Prompt::ReturnOrQuit.askuser("Press CR");
                 }
 
                 // All pre-requisites done - time for upgrade
-                let _ = Emerge::Real    // Really update, as opposed to run in Pretend mode
-                    .update_world()     // Update the world set, which is all packages
-                    .exit_if_failed();  // and if the update fails, exit the entire program
+                let _ = Emerge::Real // Really update, as opposed to run in Pretend mode
+                    .update_world() // Update the world set, which is all packages
+                    .exit_if_failed(); // and if the update fails, exit the entire program
 
                 // Handle updating package config files
                 portage::update_config_files();
@@ -147,7 +142,7 @@ fn main() {
 
             // Check and rebuild any broken reverse dependencies
             if !Emerge::Pretend.revdep_rebuild()
-                && Prompt::user("Perform reverse dependency rebuild?", Review)
+                && Prompt::SkipReturnQuit.askuser("Perform reverse dependency rebuild?")
             {
                 Emerge::Real.revdep_rebuild();
             }
@@ -159,12 +154,12 @@ fn main() {
             portage::eix_test_obsolete();
 
             // Cleanup old distfiles
-            if Prompt::user("Clean up old distribution source tarballs?", Review) {
+            if Prompt::SkipReturnQuit.askuser("Clean up old distribution source tarballs?") {
                 portage::eclean_distfiles();
             }
 
             // Cleanup unused kernels from /usr/src, /boot, /lib/modules and the grub config
-            if Prompt::user("Clean up old kernels?", Review) {
+            if Prompt::SkipReturnQuit.askuser("Clean up old kernels?") {
                 portage::eclean_kernel();
             }
 
