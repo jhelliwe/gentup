@@ -9,6 +9,8 @@ pub struct GentupArgs {
     pub force: bool,
     pub background_fetch: bool,
     pub optional: bool,
+    pub unattended: bool,
+    pub notrim: bool,
 }
 
 impl GentupArgs {
@@ -29,6 +31,8 @@ impl GentupArgs {
             force: false,
             background_fetch: false,
             optional: false,
+            unattended: false,
+            notrim: true,
         };
 
         let mut first = true;
@@ -45,8 +49,10 @@ impl GentupArgs {
                     -b  --background Perform source fetching in the background during update\n\
                     -c, --cleanup    Perform cleanup tasks only\n\
                     -f, --force      force eix-sync, bypassing the timestamp check\n\
-                    -o, --optional   Install optional packages from /etc/default/gentup\n\
                     -h, --help       Display this help text, then exit\n\
+                    -o, --optional   Install optional packages from /etc/default/gentup\n\
+                    -n, --notrim     Do not perform an fstrim after the upgrade\n\
+                    -u, --unattended Unattended upgrade - currently unimplemented\n\
                     -V, --version    Display the program version\
                 "
                     .to_string());
@@ -66,9 +72,17 @@ impl GentupArgs {
                 "-o" | "--optional" => {
                     myargs.optional = true;
                 }
+                "-u" | "--unattended" => {
+                    return Err(
+                        "Error: unattended upgrade is currently not implemented".to_string()
+                    );
+                }
+                "-t" | "--notrim" => {
+                    myargs.notrim = true;
+                }
                 _ => {
                     return Err(
-                        "Error: usage - gentup [--help|--force|--background|--cleanup|--version]"
+                        "Error: usage - gentup [--help|--force|--background|--cleanup|--optional|--unattended|--notrim|--version]"
                             .to_string(),
                     );
                 }

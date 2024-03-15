@@ -1,124 +1,123 @@
-use crate::{
-    prompt,
-    CmdVerbose::{self, *},
-    ShellOutResult,
-};
+use crate::prompt;
 use crossterm::{
     style::{Color, SetForegroundColor},
     terminal::size,
 };
 use execute::Execute;
 use std::{
+    error::Error,
     fs::{self, File},
     io::{BufRead, BufReader},
     process::{self, Command, Stdio},
 };
 use terminal_spinners::{SpinnerBuilder, LINE};
 
-// This function executes "command_line" with an optional progress spinner, and returns the stdout as a String to the
-// caller of the function
-//
-// A CmdVerbose type of Interactive leaves stdin and stdout attached to the terminal session.
-// Due to the fact that stdout is left alone, we cannot capture stdout to the String, so this
-// function will return an empty string to the caller, for Interactive shellouts.
-//
-// A CmdVerbose type of NonInteractive produces no output, provides a progress spinner and returns
-// stdout captured as a String
-//
-// A CmdVerbose type of Quiet is ditto, but with no spinner. Returns stdout as a String
-//
-pub fn system_command(command_line: &str, status: &str, verbose: CmdVerbose) -> ShellOutResult {
-    let mut command_words = Vec::new();
-    for word in command_line.split_whitespace() {
-        command_words.push(word);
-    }
-    let mut command = Command::new(command_words[0]);
-    for argument in command_words.iter().skip(1) {
-        command.arg(argument);
-    }
-    let results = {
-        match verbose {
-            NonInteractive => {
-                command.stdout(Stdio::piped());
-                let text = prompt::chevrons(Color::Green)
-                    + " "
-                    + status
-                    + ": "
-                    + &SetForegroundColor(Color::Cyan).to_string()
-                    + command_line
-                    + &SetForegroundColor(Color::Grey).to_string()
-                    + " ";
-                let handle = SpinnerBuilder::new()
-                    .spinner(&LINE)
-                    .prefix(text)
-                    .text(" ")
-                    .start();
-                let result = command.execute_output();
-                handle.done();
-                result
-            }
-            Interactive => {
-                println!(
-                    "{} {}: {}{}{}",
-                    prompt::chevrons(Color::Green),
-                    status,
-                    &SetForegroundColor(Color::Cyan),
-                    command_line,
-                    &SetForegroundColor(Color::Grey)
-                );
-                command.execute_output()
-            }
-            Quiet => {
-                command.stdout(Stdio::piped());
-                command.stderr(Stdio::piped());
-                command.execute_output()
-            }
-        }
-    };
-    match results {
-        Ok(output) => (
-            Ok(String::from_utf8_lossy(&output.stdout).to_string()),
-            output.status.code().unwrap(),
-        ),
-        Err(errors) => (Err(Box::new(errors)), 1),
-    }
+// Define a new type, OsCall which executes an external OS command
+// OsCall has a method .execute() which returns a ShellOutResult wrapping the stdout from the
+// command and the return code with a Result enum. ShellOutResult has a method .exit_if_failed
+// which will handle fatal errors from an OsCall
+pub enum OsCall {
+    NonInteractive,
+    Interactive,
+    Quiet,
 }
-
-pub fn call_fstrim() {
-    exit_on_failure(&system_command(
-        "fstrim -a",
-        "Trimming filesystems",
-        NonInteractive,
-    ));
+pub type ShellOutResult = Result<(String, i32), Box<dyn Error>>;
+pub trait CouldFail {
+    fn exit_if_failed(self) -> ShellOutResult;
 }
-
-// This function takes the result from the last system command execution and exits if there was a
-// failure running the previous command
-// It takes a ShellOutResult from the system_command, therefore it can be "wrapped" around
-// system_command, e.g exit_on_failure(&system_command("some command"....));
-// See the function call_fstrim above for an example of this
-// This design decision is so that failed system_commands can be handled by the calling code if
-// required
-pub fn exit_on_failure(shellout_result: &ShellOutResult) {
-    match shellout_result {
-        (Ok(_), status) => {
-            if *status != 0 {
+impl CouldFail for ShellOutResult {
+    fn exit_if_failed(self) -> ShellOutResult {
+        match self {
+            Ok((_, status)) => {
+                if status != 0 {
+                    eprintln!(
+                        "{} The command had a non zero exit status. Please check.\n",
+                        prompt::revchevrons(Color::Red)
+                    );
+                    process::exit(1);
+                }
+            }
+            Err(errors) => {
                 eprintln!(
-                    "{} The command had a non zero exit status. Please check.\n",
-                    prompt::revchevrons(Color::Red)
+                    "{} There was a problem executing the command: {}",
+                    prompt::revchevrons(Color::Red),
+                    errors
                 );
                 process::exit(1);
             }
         }
-        (Err(errors), _) => {
-            eprintln!(
-                "{} There was a problem executing the command: {}",
-                prompt::revchevrons(Color::Red),
-                errors
-            );
-            process::exit(1);
+        self
+    }
+}
+impl OsCall {
+    pub fn execute(self, command_line: &str, status: &str) -> ShellOutResult {
+        let mut command_words = Vec::new();
+        for word in command_line.split_whitespace() {
+            command_words.push(word);
+        }
+        let mut command = Command::new(command_words[0]);
+        for argument in command_words.iter().skip(1) {
+            command.arg(argument);
+        }
+        let results = {
+            match self {
+                // NonInteractive - executes a command via the OS with a progress spinner, returns
+                // stdout to the calling function
+                OsCall::NonInteractive => {
+                    command.stdout(Stdio::piped());
+                    let text = prompt::chevrons(Color::Green)
+                        + " "
+                        + status
+                        + ": "
+                        + &SetForegroundColor(Color::Cyan).to_string()
+                        + command_line
+                        + &SetForegroundColor(Color::Grey).to_string()
+                        + " ";
+                    let handle = SpinnerBuilder::new()
+                        .spinner(&LINE)
+                        .prefix(text)
+                        .text(" ")
+                        .start();
+                    let result = command.execute_output();
+                    handle.done();
+                    result
+                }
+                // Interactive - executes a command via the OS leaving stdin and stdout attached to
+                // the tty
+                OsCall::Interactive => {
+                    println!(
+                        "{} {}: {}{}{}",
+                        prompt::chevrons(Color::Green),
+                        status,
+                        &SetForegroundColor(Color::Cyan),
+                        command_line,
+                        &SetForegroundColor(Color::Grey)
+                    );
+                    command.execute_output()
+                }
+                // Quiet - executes a command via the OS returning stdout and stderr to the calling
+                // function
+                OsCall::Quiet => {
+                    command.stdout(Stdio::piped());
+                    command.stderr(Stdio::piped());
+                    command.execute_output()
+                }
+            }
+        };
+        match results {
+            Ok(output) => Ok((
+                (String::from_utf8_lossy(&output.stdout).to_string()),
+                output.status.code().unwrap(),
+            )),
+            Err(errors) => Err(Box::new(errors)),
         }
     }
+}
+
+pub fn call_fstrim() {
+    let _ = OsCall::NonInteractive
+        .execute("fstrim -a", "Trimming filesystems")
+        .exit_if_failed();
 }
 
 // Returns the name of the Linux distro we are running on.
@@ -175,9 +174,10 @@ pub fn stripchar(devicename: String) -> String {
 
 // This function returns the major device number of a named device node
 pub fn major_device_number(devnode: String) -> String {
-    let shellout_result = system_command(&["ls -l ", &devnode].concat(), "", Quiet);
-    exit_on_failure(&shellout_result);
-    if let (Ok(output), _) = shellout_result {
+    if let Ok((output, _)) = OsCall::Quiet
+        .execute(&["ls -l ", &devnode].concat(), "")
+        .exit_if_failed()
+    {
         let lsvec: Vec<&str> = output.split_whitespace().collect();
         let maj = lsvec[4];
         let newmaj = stripchar(maj.to_string());
@@ -221,4 +221,13 @@ pub fn termsize() -> (usize, usize) {
         process::exit(1);
     }
     (session_width, session_height)
+}
+
+// Returns the running kernel version
+pub fn running_kernel() -> String {
+    if let Ok((output, _)) = OsCall::Quiet.execute("uname -r", "") {
+        stripchar(output)
+    } else {
+        String::new()
+    }
 }

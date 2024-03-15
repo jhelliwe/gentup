@@ -1,13 +1,8 @@
 // This source file contains logic which interacts with the Portage package manager
 
 use crate::{
-    linux, portage,
-    prompt::{self, ask_user},
-    CmdVerbose::*,
-    Orphans,
-    PromptType::{self, PressCR},
-    ShellOutResult,
-    Upgrade::*,
+    linux, linux::CouldFail, linux::OsCall, linux::ShellOutResult, portage, prompt,
+    prompt::Prompt::*, Prompt,
 };
 use crossterm::{cursor, execute, style::Color};
 use filetime::FileTime;
@@ -20,51 +15,47 @@ use std::{
 };
 use terminal_spinners::{SpinnerBuilder, LINE};
 
-// Here are defined the behaviours of the package Upgrade methods
-// Pretend lets the caller see what would be upgraded without actually performing an Upgrade
+// Here are defined the behaviours of the methods for "emerge" which is the portage
+// package manager...
+// Pretend lets the caller see what would be upgraded without actually performing an upgrade
 // Real and its derivatives do perform the actual package updates
 #[derive(PartialEq)]
-pub enum Upgrade {
+pub enum Emerge {
     Pretend,
     Real,
     RealExcludeKernels,
     RealIncludeKernels,
 }
+pub type Orphans = (i32, String);
 
-impl Upgrade {
-    // Implementation steps for performing a full system update
-    pub fn all_packages(run_type: Self) -> ShellOutResult {
-        match run_type {
-            Real => linux::system_command(
+impl Emerge {
+    // Implementation steps for performing an update of the @world set (full system update)
+    pub fn update_world(self) -> ShellOutResult {
+        match self {
+            Emerge::Real => OsCall::Interactive.execute(
                 "emerge --quiet -uNDv --with-bdeps y --changed-use --complete-graph @world",
                 "Updating world set",
-                Interactive,
             ),
-            Pretend => linux::system_command(
-                "emerge -puDv @world",
-                "Checking for updates",
-                NonInteractive,
-            ),
-            _ => (Ok(String::new()), 0),
+            Emerge::Pretend => {
+                OsCall::NonInteractive.execute("emerge -puDv @world", "Checking for updates")
+            }
+            _ => Ok((String::new(), 0)),
         }
     }
 
     // Implementation steps to clean orphaned packages
-    pub fn clean(run_type: Self) -> Orphans {
-        let mut kernels = 0;
-        match run_type {
-            Pretend => {
-                let shellout_result = linux::system_command(
-                    "emerge -p --depclean",
-                    "Checking for orphaned dependencies",
-                    NonInteractive,
-                );
-                linux::exit_on_failure(&shellout_result);
-                if let (Ok(output), _) = shellout_result {
+    pub fn depclean(self) -> Orphans {
+        let mut kernels = String::new();
+        match self {
+            Emerge::Pretend => {
+                if let Ok((output, _)) = OsCall::NonInteractive
+                    .execute("emerge -p --depclean", "Checking for orphaned dependencies")
+                    .exit_if_failed()
+                {
                     let lines = output.split('\n');
                     for line in lines {
-                        if line.contains("kernel") {
-                            kernels += 1;
+                        if line.contains("gentoo-kernel") || line.contains("gentoo-sources") {
+                            kernels = linux::stripchar(line.to_string());
                         }
                         if line.starts_with("Number to remove") {
                             let mut words = line.split_whitespace();
@@ -100,49 +91,43 @@ impl Upgrade {
                     }
                 }
 
-                (0, 0)
+                (0, String::new())
             }
 
-            RealExcludeKernels => {
-                linux::exit_on_failure(&linux::system_command(
+            Emerge::RealExcludeKernels => {
+                let _ = OsCall::Interactive.execute(
                 "emerge -a --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
                 "Removing orphaned dependencies",
-                Interactive,
-            ));
-                ask_user(
+            ).exit_if_failed();
+                Prompt::user(
                     "Please verify the output of emerge --depclean above",
-                    PromptType::PressCR,
+                    PressCR,
                 );
-                (0, 0)
+                (0, String::new())
             }
 
-            RealIncludeKernels => {
-                linux::exit_on_failure(&linux::system_command(
-                    "emerge --ask --depclean",
-                    "Removing orphaned dependencies",
-                    Interactive,
-                ));
-                ask_user(
+            Emerge::RealIncludeKernels => {
+                let _ = OsCall::Interactive
+                    .execute("emerge --ask --depclean", "Removing orphaned dependencies")
+                    .exit_if_failed();
+                Prompt::user(
                     "Please verify the output of emerge --depclean above",
-                    PromptType::PressCR,
+                    PressCR,
                 );
-                (0, 0)
+                (0, String::new())
             }
-            _ => (0, 0),
+            _ => (0, String::new()),
         }
     }
 
     // Check for broken reverse dependences and rebuild
-    pub fn rebuild(run_type: Self) -> bool {
-        match run_type {
-            Pretend => {
-                let shellout_result = linux::system_command(
-                    "revdep-rebuild -ip",
-                    "Checking reverse dependencies",
-                    NonInteractive,
-                );
-                linux::exit_on_failure(&shellout_result);
-                if let (Ok(output), _) = shellout_result {
+    pub fn revdep_rebuild(self) -> bool {
+        match self {
+            Emerge::Pretend => {
+                if let Ok((output, _)) = OsCall::NonInteractive
+                    .execute("revdep-rebuild -ip", "Checking reverse dependencies")
+                    .exit_if_failed()
+                {
                     let lines = output.split('\n');
                     for line in lines {
                         if line.starts_with("Your system is consistent") {
@@ -160,16 +145,11 @@ impl Upgrade {
                 );
                 false
             }
-            Real => {
-                linux::exit_on_failure(&linux::system_command(
-                    "revdep-rebuild",
-                    "Rebuilding reverse dependencies",
-                    Interactive,
-                ));
-                ask_user(
-                    "Please verify the output of revdep-rebuild above",
-                    PromptType::PressCR,
-                );
+            Emerge::Real => {
+                let _ = OsCall::Interactive
+                    .execute("revdep-rebuild", "Rebuilding reverse dependencies")
+                    .exit_if_failed();
+                Prompt::user("Please verify the output of revdep-rebuild above", PressCR);
                 true
             }
             _ => false,
@@ -179,9 +159,9 @@ impl Upgrade {
 
 // List and fetch pending updates. Returns "true" if there are any pending updates
 // Returns false if there are no pending updates
-pub fn get_pending_updates(fetch: bool) -> bool {
-    match Upgrade::all_packages(Pretend) {
-        (Ok(output), _) => {
+pub fn get_pending_updates(background_fetch: bool) -> bool {
+    match Emerge::Pretend.update_world() {
+        Ok((output, _)) => {
             let mut pending_updates = Vec::new();
             for line in output.split('\n') {
                 if line.starts_with("[ebuild") {
@@ -223,12 +203,12 @@ pub fn get_pending_updates(fetch: bool) -> bool {
                 }
             }
             portage::package_list(&pending_updates);
-            if fetch {
+            if !background_fetch {
                 portage::fetch_sources(&pending_updates);
             }
             true
         }
-        (Err(_), _) => {
+        Err(_) => {
             eprintln!("{} Error calling emerge", prompt::revchevrons(Color::Red));
             false
         }
@@ -256,8 +236,8 @@ pub fn too_recent() -> bool {
 // This function checks that a named package is installed.
 //
 pub fn package_is_missing(package: &str) -> bool {
-    match linux::system_command(&["equery l ", package].concat(), "", Quiet) {
-        (Ok(_), return_code) => {
+    match OsCall::Quiet.execute(&["equery l ", package].concat(), "") {
+        Ok((_, return_code)) => {
             if return_code != 0 {
                 println!();
                 println!(
@@ -269,7 +249,7 @@ pub fn package_is_missing(package: &str) -> bool {
             }
             false
         }
-        (Err(returned_error), _) => {
+        Err(returned_error) => {
             eprintln!();
             eprintln!(
                 "{} Problem running command: {}",
@@ -284,18 +264,16 @@ pub fn package_is_missing(package: &str) -> bool {
 // This function updates the package tree metadata for Gentoo Linux
 //
 pub fn sync_package_tree() {
-    linux::exit_on_failure(&linux::system_command(
-        "eix-sync",
-        "Syncing package tree",
-        NonInteractive,
-    ));
+    let _ = OsCall::NonInteractive
+        .execute("eix-sync", "Syncing package tree")
+        .exit_if_failed();
 }
 
 // This function calls eix to check if the named package is due an upgrade
 //
 pub fn package_outdated(package: &str) -> bool {
-    match linux::system_command(&["eix -u ", package].concat(), "", Quiet) {
-        (Ok(_), return_status) => {
+    match OsCall::Quiet.execute(&["eix -u ", package].concat(), "") {
+        Ok((_, return_status)) => {
             if return_status != 0 {
                 return false;
             }
@@ -306,7 +284,7 @@ pub fn package_outdated(package: &str) -> bool {
             );
             true
         }
-        (Err(_), returned_error) => {
+        Err(returned_error) => {
             eprintln!(
                 "{} Command returned {}",
                 prompt::revchevrons(Color::Red),
@@ -320,63 +298,56 @@ pub fn package_outdated(package: &str) -> bool {
 // This function performs an update of the named package
 //
 pub fn upgrade_package(package: &str) {
-    linux::exit_on_failure(&linux::system_command(
-        &["emerge --quiet -1v ", package].concat(),
-        "Upgrading package",
-        Interactive,
-    ));
+    let _ = OsCall::Interactive
+        .execute(
+            &["emerge --quiet -1v ", package].concat(),
+            "Upgrading package",
+        )
+        .exit_if_failed();
 }
 
 // After package installs there are sometimes messages to the user advising them of actions they
 // need to take. These are collected into elog files and displayed here
 pub fn elog_viewer() {
-    let _shellout_result =
-        linux::system_command("elogv", "Checking for new ebuild logs", Interactive);
+    let _ = OsCall::Interactive.execute("elogv", "Checking for new ebuild logs");
 }
 
 // This function calls the portage config sanity checker
 pub fn eix_test_obsolete() {
-    linux::exit_on_failure(&linux::system_command(
-        "eix-test-obsolete",
-        "Checking obsolete configs",
-        Interactive,
-    ));
+    let _ = OsCall::Interactive
+        .execute("eix-test-obsolete", "Checking obsolete configs")
+        .exit_if_failed();
 }
 
 // This function cleans up old kernels
 pub fn eclean_kernel() {
-    linux::exit_on_failure(&linux::system_command(
-        "eclean-kernel -Aa",
-        "Cleaning old kernels",
-        Interactive,
-    ));
+    let _ = OsCall::Interactive
+        .execute("eclean-kernel -Aa", "Cleaning old kernels")
+        .exit_if_failed();
 }
 
 // This function removes old unused package tarballs
 //
 pub fn eclean_distfiles() {
-    linux::exit_on_failure(&linux::system_command(
-        "eclean -d distfiles",
-        "Cleaning unused distfiles",
-        Interactive,
-    ));
+    let _ = OsCall::Interactive
+        .execute("eclean -d distfiles", "Cleaning unused distfiles")
+        .exit_if_failed();
 }
 
 // eix_update resynchronises the eix database with the state of the currently installed packages
 pub fn eix_update() {
-    linux::exit_on_failure(&linux::system_command(
-        "eix-update",
-        "Initialising package database",
-        NonInteractive,
-    ));
+    let _ = OsCall::NonInteractive
+        .execute("eix-update", "Initialising package database")
+        .exit_if_failed();
 }
 
 // handle_news checks to see if there is unread news and lists it if required
 pub fn read_news() -> u32 {
     let mut count: u32 = 0;
-    let shellout_result = linux::system_command("eselect news count new", "", Quiet);
-    linux::exit_on_failure(&shellout_result);
-    if let (Ok(output), _) = shellout_result {
+    if let Ok((output, _)) = OsCall::Quiet
+        .execute("eselect news count new", "")
+        .exit_if_failed()
+    {
         count = output.trim().parse().unwrap_or(0);
         if count == 0 {
             println!("{} No news is good news", prompt::revchevrons(Color::Blue));
@@ -386,8 +357,8 @@ pub fn read_news() -> u32 {
                 prompt::revchevrons(Color::Yellow),
                 count,
             );
-            let _ignore = linux::system_command("eselect news list", "News listing", Interactive);
-            let _ignore = linux::system_command("eselect news read", "News listing", Interactive);
+            let _ = OsCall::Interactive.execute("eselect news list", "News listing");
+            let _ = OsCall::Interactive.execute("eselect news read", "News listing");
         }
     }
     count
@@ -395,11 +366,9 @@ pub fn read_news() -> u32 {
 
 // dispatch_conf handles pending changes to package configuration files
 pub fn update_config_files() {
-    linux::exit_on_failure(&linux::system_command(
-        "dispatch-conf",
-        "Merge config file changes",
-        Interactive,
-    ));
+    let _ = OsCall::Interactive
+        .execute("dispatch-conf", "Merge config file changes")
+        .exit_if_failed();
 }
 
 // Checks and corrects the ELOG configuration in make.conf
@@ -440,17 +409,16 @@ pub fn check_and_install_deps() {
                 prompt::revchevrons(Color::Yellow),
                 &package[0]
             );
-            linux::exit_on_failure(&linux::system_command(
-                &["emerge --quiet -v ", &package[0]].concat(),
-                &["Installing ", &package[0]].concat(),
-                NonInteractive,
-            ));
+            let _ = OsCall::NonInteractive
+                .execute(
+                    &["emerge --quiet -v ", &package[0]].concat(),
+                    &["Installing ", &package[0]].concat(),
+                )
+                .exit_if_failed();
             if !&package[2].eq("") {
-                linux::exit_on_failure(&linux::system_command(
-                    package[2],
-                    "Post installation configuration",
-                    NonInteractive,
-                ));
+                let _ = OsCall::NonInteractive
+                    .execute(package[2], "Post installation configuration")
+                    .exit_if_failed();
             }
         }
     }
@@ -493,23 +461,6 @@ pub fn check_and_install_optional_packages() {
                 Ok(file) => file,
             }
         }
-        println!(
-            "{} No /etc/default/gentup configuration file detected",
-            prompt::revchevrons(Color::Red),
-        );
-        println!(
-            "{} Creating /etc/default/gentup with a default package list",
-            prompt::revchevrons(Color::Red),
-        );
-        println!(
-            "{} These packages will be installed by this updater",
-            prompt::revchevrons(Color::Red),
-        );
-        println!(
-            "{} Please customise this list to your preferences, and then re-run this program",
-            prompt::revchevrons(Color::Red),
-        );
-        process::exit(1);
     }
 
     // Read /etc/default/gentup into a Vector of strings
@@ -526,7 +477,7 @@ pub fn check_and_install_optional_packages() {
             packages_to_check.len(),
             check
         );
-        let _ignore = execute!(io::stdout(), cursor::MoveUp(1));
+        let _ = execute!(io::stdout(), cursor::MoveUp(1));
         if portage::package_is_missing(check) {
             println!("                                                      ");
             println!(
@@ -539,15 +490,13 @@ pub fn check_and_install_optional_packages() {
                 check,
             ]
             .concat();
-            linux::exit_on_failure(&linux::system_command(
-                &cmdline,
-                "Installing missing package",
-                Interactive,
-            ));
+            let _ = OsCall::Interactive
+                .execute(&cmdline, "Installing missing package")
+                .exit_if_failed();
         }
     }
     println!("                                                                   ");
-    let _ignore = execute!(io::stdout(), cursor::MoveUp(1));
+    let _ = execute!(io::stdout(), cursor::MoveUp(1));
 }
 
 pub fn fetch_sources(package_vec: &Vec<&str>) {
@@ -565,14 +514,14 @@ pub fn fetch_sources(package_vec: &Vec<&str>) {
         ]
         .concat();
         let handle = SpinnerBuilder::new().spinner(&LINE).text(text).start();
-        linux::exit_on_failure(&linux::system_command(
-            &["emerge --fetchonly --nodeps =", ebuild_to_fetch].concat(),
-            "",
-            Quiet,
-        ));
+        let _ = OsCall::Quiet
+            .execute(
+                &["emerge --fetchonly --nodeps =", ebuild_to_fetch].concat(),
+                "",
+            )
+            .exit_if_failed();
         handle.done();
     }
-    ask_user("Downloads complete", PressCR);
 }
 
 // Shortens a package name for more aesthetic display to user

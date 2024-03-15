@@ -2,7 +2,7 @@
 // Written by John Helliwell
 // https://github.com/jhelliwe
 
-const VERSION: &str = "0.38a";
+const VERSION: &str = "0.39a";
 
 /* This program is free software: you can redistribute it
  * and/or modify it under the terms of the GNU General
@@ -23,29 +23,18 @@ pub mod args; // Deals with command line arguments
 pub mod linux; // Interacts with the operating system
 pub mod portage; // Interacts with the Portage package manager
 pub mod prompt; // Asks the user permission to continue
-use crate::{args::GentupArgs, linux::exit_on_failure, portage::Upgrade, Upgrade::*};
+use crate::{
+    args::GentupArgs,
+    linux::CouldFail,
+    portage::Emerge,
+    prompt::Prompt::{self, *},
+};
 use crossterm::{
     cursor, execute,
     style::Color,
     terminal::{self, ClearType},
 };
-use std::{env, error::Error, io, process};
-
-// Declare new variable types used by the project
-#[derive(PartialEq)]
-pub enum PromptType {
-    Review,
-    PressCR,
-}
-pub enum CmdVerbose {
-    NonInteractive,
-    Interactive,
-    Quiet,
-}
-pub type RevDep = Upgrade;
-pub type Dep = Upgrade;
-pub type Orphans = (i32, i32);
-pub type ShellOutResult = (Result<String, Box<dyn Error>>, i32);
+use std::{env, io, process};
 
 // main is the entry point for the compiled binary executable
 fn main() {
@@ -58,7 +47,7 @@ fn main() {
         }
         Ok(arguments) => {
             // Clear screen
-            let _ignore = execute!(
+            let _ = execute!(
                 io::stdout(),
                 terminal::Clear(ClearType::All),
                 cursor::MoveTo(0, 0)
@@ -78,7 +67,6 @@ fn main() {
             // This call installs required packages which are a direct dependency of this updater,
             portage::check_and_install_deps();
             if arguments.optional {
-                // This call installs optional packages useful for a new Gentoo installation
                 portage::check_and_install_optional_packages();
             }
 
@@ -115,18 +103,18 @@ fn main() {
                 if !arguments.force && !portage::get_pending_updates(arguments.background_fetch) {
                     process::exit(0);
                 }
-                if !arguments.background_fetch {
-                    prompt::ask_user("Please review", PromptType::PressCR);
-                }
+                Prompt::user("Please review", PressCR);
 
                 // Check the news - if there is news, list and read it
                 println!("{} Checking Gentoo news", prompt::chevrons(Color::Green));
                 if portage::read_news() > 0 {
-                    prompt::ask_user("Press CR", PromptType::PressCR);
+                    Prompt::user("Press CR", PressCR);
                 }
 
                 // All pre-requisites done - time for upgrade
-                exit_on_failure(&Upgrade::all_packages(Real));
+                let _ = Emerge::Real    // Really update, as opposed to run in Pretend mode
+                    .update_world()     // Update the world set, which is all packages
+                    .exit_if_failed();  // and if the update fails, exit the entire program
 
                 // Handle updating package config files
                 portage::update_config_files();
@@ -142,29 +130,26 @@ fn main() {
             // sense if it is still the running kernel, so there is logic in here to prevent that.
             // After all, if the kernel we have just installed fails to boot, we need to leave the
             // previous one around for recovery.
-            let (orphans, kernels) = Dep::clean(Pretend); // Pretend mode only lists orphaned deps
-            if !arguments.cleanup && kernels > 0 {
-                println!(
-                    "{} Upgrade complete. You should reboot into your new kernel and rerun this utility with the --cleanup flag", 
-                    prompt::chevrons(Color::Blue)
-                );
-                process::exit(0);
-            }
+            let (orphans, kernels) = Emerge::Pretend.depclean(); // Pretend mode only lists orphaned deps
             if orphans > 0 {
-                // We only depclean kernel packages in cleanup mode - This is to prevent the issue of
-                // depclean removing the currently running kernel immedately after a kernel upgrade
-                if arguments.cleanup && kernels > 0 {
-                    Dep::clean(RealIncludeKernels); // depcleans everything including old kernel packages
+                // To prevent the issue of depclean removing the currently running kernel immedately after a kernel upgrade
+                // check to see if the running kernel will be depcleaned
+                if kernels.contains(&linux::running_kernel()) {
+                    println!(
+                        "{} Preserving currently running kernel",
+                        prompt::revchevrons(Color::Yellow)
+                    );
+                    Emerge::RealExcludeKernels.depclean(); // depcleans everything excluding old kernel packages
                 } else {
-                    Dep::clean(RealExcludeKernels); // depcleans everything excluding old kernel packages
+                    Emerge::RealIncludeKernels.depclean(); // depcleans everything
                 }
             }
 
             // Check and rebuild any broken reverse dependencies
-            if !RevDep::rebuild(Pretend)
-                && prompt::ask_user("Perform reverse dependency rebuild?", PromptType::Review)
+            if !Emerge::Pretend.revdep_rebuild()
+                && Prompt::user("Perform reverse dependency rebuild?", Review)
             {
-                RevDep::rebuild(Real);
+                Emerge::Real.revdep_rebuild();
             }
 
             // Check the sanity of the /etc/portage configuration files. These can become complex
@@ -174,23 +159,18 @@ fn main() {
             portage::eix_test_obsolete();
 
             // Cleanup old distfiles
-            if prompt::ask_user(
-                "Clean up old distribution source tarballs?",
-                PromptType::Review,
-            ) {
+            if Prompt::user("Clean up old distribution source tarballs?", Review) {
                 portage::eclean_distfiles();
             }
 
             // Cleanup unused kernels from /usr/src, /boot, /lib/modules and the grub config
-            if prompt::ask_user("Clean up old kernels?", PromptType::Review) {
+            if Prompt::user("Clean up old kernels?", Review) {
                 portage::eclean_kernel();
             }
 
             // fstrim - if this is an SSD or thinly provisioned filesystem, send DISCARDs so that
             // the backing store can recover any freed-up blocks
-            if prompt::ask_user("Reclaim free blocks?", PromptType::Review)
-                && linux::is_rotational() == 0
-            {
+            if !arguments.notrim && linux::is_rotational() == 0 {
                 linux::call_fstrim();
             }
 
