@@ -6,7 +6,7 @@ use crossterm::{
 use execute::Execute;
 use std::{
     error::Error,
-    fs::{self, File},
+    fs::File,
     io::{BufRead, BufReader},
     process::{self, Command, Stdio},
 };
@@ -24,10 +24,12 @@ pub enum OsCall {
     Quiet, // stdout and stderr are piped allowing OsCall to capture them and return them in a String
 }
 pub type ShellOutResult = Result<(String, i32), Box<dyn Error>>; // ShellOutResult is returned from an OsCall
-pub trait CouldFail { // OsCalls could fail, and the failures need to be handled
+pub trait CouldFail {
+    // OsCalls could fail, and the failures need to be handled
     fn exit_if_failed(self) -> ShellOutResult;
 }
-impl CouldFail for ShellOutResult { // Generic handler for failed OsCalls
+impl CouldFail for ShellOutResult {
+    // Generic handler for failed OsCalls
     fn exit_if_failed(self) -> ShellOutResult {
         match self {
             Ok((_, status)) => {
@@ -51,7 +53,8 @@ impl CouldFail for ShellOutResult { // Generic handler for failed OsCalls
         self
     }
 }
-impl OsCall { // Fork and exec an external command. Waits for completion
+impl OsCall {
+    // Fork and exec an external command. Waits for completion
     pub fn execute(self, command_line: &str, status: &str) -> ShellOutResult {
         let mut command_words = Vec::new();
         for word in command_line.split_whitespace() {
@@ -147,65 +150,9 @@ pub fn check_distro(required_distro: &str) -> Result<String, String> {
     }
 }
 
-// This function returns the device name that the root filesystem resides on
-pub fn getdev_rootfs() -> String {
-    let mut rootfsdev = "None".to_string();
-    let procmounts = fs::read_to_string("/proc/mounts");
-    match procmounts {
-        Ok(contents) => {
-            for eachline in contents.lines() {
-                if eachline.contains(" / ") {
-                    let rootfsvec: Vec<&str> = eachline.split_whitespace().collect();
-                    rootfsdev = rootfsvec[0].to_string();
-                    break;
-                }
-            }
-            rootfsdev.to_string()
-        }
-        Err(error) => {
-            eprintln!("Error {}", error);
-            "None".to_string()
-        }
-    }
-}
-
 // This function removed numeric elements of a string
 pub fn stripchar(devicename: String) -> String {
     return devicename.chars().filter(|c| c.is_numeric()).collect();
-}
-
-// This function returns the major device number of a named device node
-pub fn major_device_number(devnode: String) -> String {
-    if let Ok((output, _)) = OsCall::Quiet
-        .execute(&["ls -l ", &devnode].concat(), "")
-        .exit_if_failed()
-    {
-        let lsvec: Vec<&str> = output.split_whitespace().collect();
-        let maj = lsvec[4];
-        let newmaj = stripchar(maj.to_string());
-        return newmaj;
-    }
-    "0".to_string()
-}
-
-// This function returns the pathname of the rotational attribute of a named block device by major
-// device number
-pub fn syspath(major: String) -> String {
-    ["/sys/dev/block/", &major, ":0/queue/rotational"].concat()
-}
-
-// This function returns a 1 if the root filesystem resides on a rotational device like a HDD or 0
-// if the root filesystem resides on an SSD or thinly provisioned backing store
-pub fn is_rotational() -> i32 {
-    let return_value: i32 = 1;
-    let device_name = getdev_rootfs();
-    let device_major = major_device_number(device_name);
-    let sys = syspath(device_major);
-    let result = fs::read_to_string(sys);
-    if let Ok(hdd) = result {
-        return hdd.trim().parse::<i32>().unwrap();
-    }
-    return_value
 }
 
 // Gets the current terminal size

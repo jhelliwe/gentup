@@ -1,4 +1,5 @@
 // Parse command line arguments
+// TODO - this functions fails to parse multi-switch clusters i.e -fbo - to be implemented
 
 use crate::VERSION;
 use std::env::{self, Args};
@@ -10,7 +11,7 @@ pub struct GentupArgs {
     pub background_fetch: bool,
     pub optional: bool,
     pub unattended: bool,
-    pub notrim: bool,
+    pub trim: bool,
 }
 
 impl GentupArgs {
@@ -32,7 +33,7 @@ impl GentupArgs {
             background_fetch: false,
             optional: false,
             unattended: false,
-            notrim: true,
+            trim: false,
         };
 
         let mut first = true;
@@ -47,12 +48,12 @@ impl GentupArgs {
                     gentup [options]\n \
                     Options:\n\n\
                     -b  --background Perform source fetching in the background during update\n\
-                    -c, --cleanup    Perform cleanup tasks only\n\
+                    -c, --cleanup    Perform cleanup tasks after a successful upgrade\n\
                     -f, --force      force eix-sync, bypassing the timestamp check\n\
                     -h, --help       Display this help text, then exit\n\
                     -o, --optional   Install optional packages from /etc/default/gentup\n\
-                    -n, --notrim     Do not perform an fstrim after the upgrade\n\
-                    -u, --unattended Unattended upgrade - currently unimplemented\n\
+                    -t, --trim       Perform an fstrim after the upgrade\n\
+                    -u, --unattended Unattended upgrade - partially unimplemented\n\
                     -V, --version    Display the program version\
                 "
                     .to_string());
@@ -73,16 +74,14 @@ impl GentupArgs {
                     myargs.optional = true;
                 }
                 "-u" | "--unattended" => {
-                    return Err(
-                        "Error: unattended upgrade is currently not implemented".to_string()
-                    );
+                    myargs.unattended = true;
                 }
-                "-t" | "--notrim" => {
-                    myargs.notrim = true;
+                "-t" | "--trim" => {
+                    myargs.trim = true;
                 }
                 _ => {
                     return Err(
-                        "Error: usage - gentup [--help|--force|--background|--cleanup|--optional|--unattended|--notrim|--version]"
+                        "Error: usage - gentup [--help|--force|--background|--cleanup|--optional|--unattended|--trim|--version]"
                             .to_string(),
                     );
                 }

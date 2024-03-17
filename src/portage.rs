@@ -26,7 +26,7 @@ pub enum Emerge {
     RealIncludeKernels,
 }
 pub type Orphans = (i32, String);
-impl Emerge { 
+impl Emerge {
     // Implementation steps for performing an update of the @world set (full system update)
     pub fn update_world(self) -> ShellOutResult {
         match self {

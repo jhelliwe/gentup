@@ -2,7 +2,7 @@
 // Written by John Helliwell
 // https://github.com/jhelliwe
 
-const VERSION: &str = "0.40a";
+const VERSION: &str = "0.41a";
 
 /* This program is free software: you can redistribute it
  * and/or modify it under the terms of the GNU General
@@ -70,105 +70,102 @@ fn main() {
             // installed but not configured, this function call will configure elogv for us
             portage::configure_elogv();
 
-            // Only do update tasks if the user did not select cleanup mode
-            if !arguments.cleanup {
-                // Check if the last resync was too recent - if not, sync the portage tree
-                // or the user can force a sync anyway by using "gentup --force"
-                // The too recent logic is to avoid abusing the rsync.gentoo.org rotation which
-                // asks that users do not sync more than once per day
-                if arguments.force || !portage::too_recent() {
-                    portage::sync_package_tree();
-                }
-
-                /* It necessary to update the package manager (sys-apps/portage) first before updating
-                 * the entire system and the same again for gcc since this is a source based
-                 * distribution!
-                 */
-
-                if portage::package_outdated("sys-apps/portage") {
-                    portage::upgrade_package("sys-apps/portage");
-                }
-
-                if portage::package_outdated("sys-devel/gcc") {
-                    portage::upgrade_package("sys-devel/gcc");
-                }
-
-                // Present a list of packages to be updated to the screen
-                // If there are no packages pending updates, we can quit at this stage
-                if !arguments.force && !portage::get_pending_updates(arguments.background_fetch) {
-                    process::exit(0);
-                }
-                Prompt::ReturnOrQuit.askuser("Please review");
-
-                // Check the news - if there is news, list and read it
-                println!("{} Checking Gentoo news", prompt::chevrons(Color::Green));
-                if portage::read_news() > 0 {
-                    Prompt::ReturnOrQuit.askuser("Press CR");
-                }
-
-                // All pre-requisites done - time for upgrade
-                let _ = Emerge::Real // Really update, as opposed to run in Pretend mode
-                    .update_world() // Update the world set, which is all packages
-                    .exit_if_failed(); // and if the update fails, exit the entire program
-
-                // Handle updating package config files
-                portage::update_config_files();
+            // Check if the last resync was too recent - if not, sync the portage tree
+            // or the user can force a sync anyway by using "gentup --force"
+            // The too recent logic is to avoid abusing the rsync.gentoo.org rotation which
+            // asks that users do not sync more than once per day
+            if arguments.force || !portage::too_recent() {
+                portage::sync_package_tree();
             }
+
+            /* It necessary to update the package manager (sys-apps/portage) first before updating
+             * the entire system and the same again for gcc since this is a source based
+             * distribution!
+             */
+
+            if portage::package_outdated("sys-apps/portage") {
+                portage::upgrade_package("sys-apps/portage");
+            }
+
+            if portage::package_outdated("sys-devel/gcc") {
+                portage::upgrade_package("sys-devel/gcc");
+            }
+
+            // Present a list of packages to be updated to the screen
+            // If there are no packages pending updates, we can quit at this stage
+            let pending = portage::get_pending_updates(arguments.background_fetch);
+            if !pending && !arguments.force && !arguments.cleanup {
+                process::exit(0);
+            }
+            if !arguments.unattended {
+                Prompt::ReturnOrQuit.askuser("Please review");
+            }
+
+            // Check the news - if there is news, list and read it
+            println!("{} Checking Gentoo news", prompt::chevrons(Color::Green));
+            if portage::read_news() > 0 {
+                Prompt::ReturnOrQuit.askuser("Press CR"); // Eventually read_news will email the user instead of pronpting
+            }
+
+            // All pre-requisites done - time for upgrade
+            if pending {
+                let _ = Emerge::Real.update_world().exit_if_failed();
+            }
+
+            // Handle updating package config files
+            portage::update_config_files();
 
             // Displays any messages from package installs to the user
             portage::elog_viewer();
 
-            // List and remove orphaned dependencies. The depclean function returns a tuple
-            // describing how many packages are orphaned in total, and also how many of those
-            // packages are related to the kernel. If we have just installed a new kernel, the
-            // running kernel is an immediate target for cleaning by depclean, which doesn't make
-            // sense if it is still the running kernel, so there is logic in here to prevent that.
-            // After all, if the kernel we have just installed fails to boot, we need to leave the
-            // previous one around for recovery.
+            // List and remove orphaned dependencies.
+            // One important point, we force a cleanup if there are old kernel packages to remove
+            // otherwise /boot will become too full
             let (orphans, kernels) = Emerge::Pretend.depclean(); // Pretend mode only lists orphaned deps
             if orphans > 0 {
                 // To prevent the issue of depclean removing the currently running kernel immedately after a kernel upgrade
                 // check to see if the running kernel will be depcleaned
                 if kernels.contains(&linux::running_kernel()) {
+                    if arguments.cleanup {
+                        Emerge::RealExcludeKernels.depclean(); // depcleans everything excluding old kernel packages
+                    }
                     println!(
-                        "{} Preserving currently running kernel",
-                        prompt::revchevrons(Color::Yellow)
+                        "{} Preserving currently running kernel. Skipping cleanup",
+                        prompt::chevrons(Color::Green)
                     );
-                    Emerge::RealExcludeKernels.depclean(); // depcleans everything excluding old kernel packages
-                } else {
+                    println!("{} All done!!!", prompt::chevrons(Color::Green));
+                    process::exit(0);
+                } else if arguments.cleanup || kernels.ne("") {
                     Emerge::RealIncludeKernels.depclean(); // depcleans everything
                 }
             }
 
-            // Check and rebuild any broken reverse dependencies
-            if !Emerge::Pretend.revdep_rebuild()
-                && Prompt::SkipReturnQuit.askuser("Perform reverse dependency rebuild?")
-            {
-                Emerge::Real.revdep_rebuild();
-            }
+            if arguments.cleanup || kernels.ne("") {
+                // Check and rebuild any broken reverse dependencies
+                if !Emerge::Pretend.revdep_rebuild() {
+                    Emerge::Real.revdep_rebuild();
+                }
 
-            // Check the sanity of the /etc/portage configuration files. These can become complex
-            // configurations over time, and entries in this directory can break things when
-            // packages that required these configs are removed. This feature makes eix worth its
-            // weight in gold. Good portage hygiene prevents problems further down the line
-            portage::eix_test_obsolete();
+                // Check the sanity of the /etc/portage configuration files. These can become complex
+                // configurations over time, and entries in this directory can break things when
+                // packages that required these configs are removed. This feature makes eix worth its
+                // weight in gold. Good portage hygiene prevents problems further down the line
+                portage::eix_test_obsolete();
 
-            // Cleanup old distfiles
-            if Prompt::SkipReturnQuit.askuser("Clean up old distribution source tarballs?") {
+                // Cleanup old distfiles
                 portage::eclean_distfiles();
-            }
 
-            // Cleanup unused kernels from /usr/src, /boot, /lib/modules and the grub config
-            if Prompt::SkipReturnQuit.askuser("Clean up old kernels?") {
+                // Cleanup unused kernels from /usr/src, /boot, /lib/modules and the grub config
                 portage::eclean_kernel();
-            }
 
-            // fstrim - if this is an SSD or thinly provisioned filesystem, send DISCARDs so that
-            // the backing store can recover any freed-up blocks
-            if !arguments.notrim && linux::is_rotational() == 0 {
-                linux::call_fstrim();
+                // fstrim - if this is an SSD or thinly provisioned filesystem, send DISCARDs so that
+                // the backing store can recover any freed-up blocks. I do this because a full
+                // update creates so many GB of temp files it warrants a trim. If the user selects
+                // the trim option, they are responsible for ensuring the device supports trim/discard
+                if arguments.trim {
+                    linux::call_fstrim();
+                }
             }
-
             println!("{} All done!!!", prompt::chevrons(Color::Green));
         }
     }
