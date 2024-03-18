@@ -5,12 +5,12 @@ use std::{io, process};
 // Prompt the user to continue, skip, quit etc
 #[derive(PartialEq)]
 pub enum Prompt {
-    SkipReturnQuit,
-    ReturnOrQuit,
+    AllowSkip,
+    PressReturn,
 }
 impl Prompt {
     pub fn askuser(self, userinput: &str) -> bool {
-        if self != ReturnOrQuit {
+        if self != PressReturn {
             println!(
                 "{} {}: Press return to continue, s to skip, q to quit",
                 chevrons(Color::Green),

@@ -2,7 +2,7 @@
 // Written by John Helliwell
 // https://github.com/jhelliwe
 
-const VERSION: &str = "0.41a";
+const VERSION: &str = "0.42a";
 
 /* This program is free software: you can redistribute it
  * and/or modify it under the terms of the GNU General
@@ -23,7 +23,12 @@ pub mod args; // Deals with command line arguments
 pub mod linux; // Interacts with the operating system
 pub mod portage; // Interacts with the Portage package manager
 pub mod prompt; // Asks the user permission to continue
-use crate::{args::GentupArgs, linux::CouldFail, portage::Emerge, prompt::Prompt};
+use crate::{
+    args::{ArgV, Search},
+    linux::CouldFail,
+    portage::Gentoo,
+    prompt::Prompt,
+};
 use crossterm::{
     cursor, execute,
     style::Color,
@@ -34,7 +39,7 @@ use std::{env, io, process};
 // main is the entry point for the compiled binary executable
 fn main() {
     // First, parse the command line arguments
-    match GentupArgs::parse(env::args()) {
+    match ArgV::parse(env::args()) {
         Err(error) => {
             // Command line arguments are incorrect - inform the user and exit
             eprintln!("{}", error);
@@ -47,6 +52,10 @@ fn main() {
                 terminal::Clear(ClearType::All),
                 cursor::MoveTo(0, 0)
             );
+
+            // *************
+            // PREREQUSITES
+            // *************
 
             // Are we running on Gentoo? if not, exit the program
             match linux::check_distro("Gentoo") {
@@ -61,7 +70,11 @@ fn main() {
 
             // This call installs required packages which are a direct dependency of this updater,
             portage::check_and_install_deps();
-            if arguments.optional {
+
+            // If the user selected the --optional flag, check and install the optional packages.
+            // This is mostly useful to get a newly installed bare-bones Gentoo install into a more
+            // complete baseline state
+            if arguments.getflag("optional") {
                 portage::check_and_install_optional_packages();
             }
 
@@ -74,60 +87,62 @@ fn main() {
             // or the user can force a sync anyway by using "gentup --force"
             // The too recent logic is to avoid abusing the rsync.gentoo.org rotation which
             // asks that users do not sync more than once per day
-            if arguments.force || !portage::too_recent() {
+            if arguments.getflag("force") || !portage::too_recent() {
                 portage::sync_package_tree();
             }
-
-            /* It necessary to update the package manager (sys-apps/portage) first before updating
-             * the entire system and the same again for gcc since this is a source based
-             * distribution!
-             */
-
+            // Update sys-apps/portage and sys-devel/gcc before any other packages
             if portage::package_outdated("sys-apps/portage") {
                 portage::upgrade_package("sys-apps/portage");
             }
-
             if portage::package_outdated("sys-devel/gcc") {
                 portage::upgrade_package("sys-devel/gcc");
             }
-
             // Present a list of packages to be updated to the screen
             // If there are no packages pending updates, we can quit at this stage
-            let pending = portage::get_pending_updates(arguments.background_fetch);
-            if !pending && !arguments.force && !arguments.cleanup {
+            let pending = portage::get_pending_updates(arguments.getflag("background"));
+            if !pending && !arguments.getflag("cleanup") {
                 process::exit(0);
             }
-            if !arguments.unattended {
-                Prompt::ReturnOrQuit.askuser("Please review");
+            if !arguments.getflag("unattended") {
+                Prompt::PressReturn.askuser("Please review");
             }
-
             // Check the news - if there is news, list and read it
             println!("{} Checking Gentoo news", prompt::chevrons(Color::Green));
             if portage::read_news() > 0 {
-                Prompt::ReturnOrQuit.askuser("Press CR"); // Eventually read_news will email the user instead of pronpting
+                Prompt::PressReturn.askuser("Press CR"); // Eventually read_news will email the user instead of pronpting
+                                                         // in order to reach the fully automated
+                                                         // milestone of this project
             }
 
-            // All pre-requisites done - time for upgrade
+            // ==================
+            // FULL SYSTEM UPDATE
+            // ==================
+
             if pending {
-                let _ = Emerge::Real.update_world().exit_if_failed();
+                let _ = Gentoo::FullRun.update_all_packages().exit_if_failed();
             }
 
-            // Handle updating package config files
-            portage::update_config_files();
+            // =================
+            // POST_UPDATE TASKS
+            // =================
 
-            // Displays any messages from package installs to the user
-            portage::elog_viewer();
+            portage::update_config_files(); // Handle updating package config files
+            portage::elog_viewer(); // Displays any messages from package installs to the user
+
+            // =======
+            // CLEANUP
+            // =======
 
             // List and remove orphaned dependencies.
             // One important point, we force a cleanup if there are old kernel packages to remove
             // otherwise /boot will become too full
-            let (orphans, kernels) = Emerge::Pretend.depclean(); // Pretend mode only lists orphaned deps
+            let (orphans, kernels) = Gentoo::DryRun.depclean(); // DryRun mode only lists orphaned deps
             if orphans > 0 {
-                // To prevent the issue of depclean removing the currently running kernel immedately after a kernel upgrade
+                // To prevent the issue of depclean removing the currently running kernel immediately after a kernel upgrade
                 // check to see if the running kernel will be depcleaned
                 if kernels.contains(&linux::running_kernel()) {
-                    if arguments.cleanup {
-                        Emerge::RealExcludeKernels.depclean(); // depcleans everything excluding old kernel packages
+                    if arguments.getflag("cleanup") {
+                        Gentoo::PreserveKernel.depclean(); // depcleans everything excluding old kernel packages
                     }
                     println!(
                         "{} Preserving currently running kernel. Skipping cleanup",
@@ -135,34 +150,20 @@ fn main() {
                     );
                     println!("{} All done!!!", prompt::chevrons(Color::Green));
                     process::exit(0);
-                } else if arguments.cleanup || kernels.ne("") {
-                    Emerge::RealIncludeKernels.depclean(); // depcleans everything
+                } else if arguments.getflag("cleanup") || kernels.ne("") {
+                    Gentoo::AllPackages.depclean(); // depcleans everything
                 }
             }
-
-            if arguments.cleanup || kernels.ne("") {
+            if arguments.getflag("cleanup") || kernels.ne("") {
                 // Check and rebuild any broken reverse dependencies
-                if !Emerge::Pretend.revdep_rebuild() {
-                    Emerge::Real.revdep_rebuild();
+                if !Gentoo::DryRun.revdep_rebuild() {
+                    Gentoo::FullRun.revdep_rebuild();
                 }
-
-                // Check the sanity of the /etc/portage configuration files. These can become complex
-                // configurations over time, and entries in this directory can break things when
-                // packages that required these configs are removed. This feature makes eix worth its
-                // weight in gold. Good portage hygiene prevents problems further down the line
-                portage::eix_test_obsolete();
-
-                // Cleanup old distfiles
-                portage::eclean_distfiles();
-
-                // Cleanup unused kernels from /usr/src, /boot, /lib/modules and the grub config
-                portage::eclean_kernel();
-
-                // fstrim - if this is an SSD or thinly provisioned filesystem, send DISCARDs so that
-                // the backing store can recover any freed-up blocks. I do this because a full
-                // update creates so many GB of temp files it warrants a trim. If the user selects
-                // the trim option, they are responsible for ensuring the device supports trim/discard
-                if arguments.trim {
+                portage::eix_test_obsolete(); // Find any obsolete portage configurations from removed packages
+                portage::eclean_distfiles(); // Cleanup old distfiles
+                portage::eclean_kernel(); // Cleanup unused kernels from /usr/src, /boot, /lib/modules and the grub config
+                if arguments.getflag("trim") {
+                    // A full update creates so many GB of temp files it warrants a trim
                     linux::call_fstrim();
                 }
             }

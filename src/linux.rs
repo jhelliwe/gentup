@@ -13,14 +13,9 @@ use std::{
 use terminal_spinners::{SpinnerBuilder, LINE};
 
 // Define a new type, OsCall which executes an external OS command
-//
-// OsCall has a method .execute() which returns a ShellOutResult wrapping the stdout from the
-// command and the return code with a Result enum. ShellOutResult has a method .exit_if_failed
-// which will handle fatal errors from an OsCall, or alternatively the calling function can handle
-// the Err variant itself
 pub enum OsCall {
     Interactive, // stdin, stdout and stderr are left attached to the tty allowing the user to interact
-    NonInteractive, // stdout is piped allowing OsCall to capture the stdout and return it as a String
+    Spinner,     // stdout is piped allowing OsCall to capture the stdout and return it as a String
     Quiet, // stdout and stderr are piped allowing OsCall to capture them and return them in a String
 }
 pub type ShellOutResult = Result<(String, i32), Box<dyn Error>>; // ShellOutResult is returned from an OsCall
@@ -66,9 +61,9 @@ impl OsCall {
         }
         let results = {
             match self {
-                // NonInteractive - executes a command via the OS with a progress spinner, returns
+                // Spinner - executes a command via the OS with a progress spinner, returns
                 // stdout to the calling function
-                OsCall::NonInteractive => {
+                OsCall::Spinner => {
                     command.stdout(Stdio::piped());
                     let text = prompt::chevrons(Color::Green)
                         + " "
@@ -120,7 +115,7 @@ impl OsCall {
 }
 
 pub fn call_fstrim() {
-    let _ = OsCall::NonInteractive
+    let _ = OsCall::Spinner
         .execute("fstrim -a", "Trimming filesystems")
         .exit_if_failed();
 }

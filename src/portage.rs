@@ -5,7 +5,6 @@ use crate::{
 };
 use crossterm::{cursor, execute, style::Color};
 use filetime::FileTime;
-use regex::Regex;
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Seek, SeekFrom, Write},
@@ -14,39 +13,43 @@ use std::{
 };
 use terminal_spinners::{SpinnerBuilder, LINE};
 
-// Here are defined the behaviours of the methods for "emerge" which is the portage
-// package manager...
-// Pretend lets the caller see what would be upgraded without actually performing an upgrade
-// Real and its derivatives do perform the actual package updates
+// Describe actions to be taken with the package manager
 #[derive(PartialEq)]
-pub enum Emerge {
-    Pretend,
-    Real,
-    RealExcludeKernels,
-    RealIncludeKernels,
+pub enum Gentoo {
+    DryRun,
+    FullRun,
+    PreserveKernel,
+    AllPackages,
 }
+
+// Describe orphaned packages
 pub type Orphans = (i32, String);
-impl Emerge {
-    // Implementation steps for performing an update of the @world set (full system update)
-    pub fn update_world(self) -> ShellOutResult {
+
+// Describe methods used with package manager tools
+impl Gentoo {
+    // Perform an update of the @world set (full system update)
+    pub fn update_all_packages(self) -> ShellOutResult {
         match self {
-            Emerge::Real => OsCall::Interactive.execute(
+            Gentoo::FullRun => OsCall::Interactive.execute(
                 "emerge --quiet -uNDv --with-bdeps y --changed-use --complete-graph @world",
                 "Updating world set",
             ),
-            Emerge::Pretend => {
-                OsCall::NonInteractive.execute("emerge -puDv @world", "Checking for updates")
+            Gentoo::DryRun => {
+                OsCall::Spinner.execute("emerge -puDv @world", "Checking for updates")
             }
             _ => Ok((String::new(), 0)),
         }
     }
 
-    // Implementation steps to clean orphaned packages
+    // Check and clean orphaned packages, for example if php was installed and libgd was enabled,
+    // php would have pulled in libgd as a dependency. If the user removes php, libgd is not
+    // automatically removed. The depclean method here will detect libgd as an orphaned package and
+    // will remove it.
     pub fn depclean(self) -> Orphans {
         let mut kernels = String::new();
         match self {
-            Emerge::Pretend => {
-                if let Ok((output, _)) = OsCall::NonInteractive
+            Gentoo::DryRun => {
+                if let Ok((output, _)) = OsCall::Spinner
                     .execute("emerge -p --depclean", "Checking for orphaned dependencies")
                     .exit_if_failed()
                 {
@@ -91,32 +94,38 @@ impl Emerge {
 
                 (0, String::new())
             }
-
-            Emerge::RealExcludeKernels => {
+            Gentoo::PreserveKernel => {
                 let _ = OsCall::Interactive.execute(
                 "emerge -a --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
                 "Removing orphaned dependencies",
             ).exit_if_failed();
-                Prompt::ReturnOrQuit.askuser("Please verify the output of emerge --depclean above");
+                Prompt::PressReturn.askuser("Please verify the output of emerge --depclean above");
                 (0, String::new())
             }
-
-            Emerge::RealIncludeKernels => {
+            Gentoo::AllPackages => {
                 let _ = OsCall::Interactive
-                    .execute("emerge --ask --depclean", "Removing orphaned dependencies")
+                    .execute(
+                        "emerge --ask --depclean",
+                        "Removing all orphaned dependencies",
+                    )
                     .exit_if_failed();
-                Prompt::ReturnOrQuit.askuser("Please verify the output of emerge --depclean above");
+                Prompt::PressReturn.askuser("Please verify the output of emerge --depclean above");
                 (0, String::new())
             }
             _ => (0, String::new()),
         }
     }
 
-    // Check for broken reverse dependences and rebuild
+    // Check for broken reverse dependences and rebuild. For example if golang is updated, packages
+    // that use golang (like k8s) would have to be reinstalled, because golang updates cause breakage.
+    // revdep-rebuild is a relic, coming from a time when Portage didn't do it's own rebuild
+    // checking - BUT sometimes Portage misses things. It's always a good idea to go through each
+    // installed package and check that the dynamic libraries for each binary resolve and can be
+    // linked at run-time
     pub fn revdep_rebuild(self) -> bool {
         match self {
-            Emerge::Pretend => {
-                if let Ok((output, _)) = OsCall::NonInteractive
+            Gentoo::DryRun => {
+                if let Ok((output, _)) = OsCall::Spinner
                     .execute("revdep-rebuild -ip", "Checking reverse dependencies")
                     .exit_if_failed()
                 {
@@ -137,11 +146,11 @@ impl Emerge {
                 );
                 false
             }
-            Emerge::Real => {
+            Gentoo::FullRun => {
                 let _ = OsCall::Interactive
                     .execute("revdep-rebuild", "Rebuilding reverse dependencies")
                     .exit_if_failed();
-                Prompt::ReturnOrQuit.askuser("Please verify the output of revdep-rebuild above");
+                Prompt::PressReturn.askuser("Please verify the output of revdep-rebuild above");
                 true
             }
             _ => false,
@@ -150,9 +159,9 @@ impl Emerge {
 }
 
 // List and fetch pending updates. Returns "true" if there are any pending updates
-// Returns false if there are no pending updates
+// Returns false if there are no pending updates.
 pub fn get_pending_updates(background_fetch: bool) -> bool {
-    match Emerge::Pretend.update_world() {
+    match Gentoo::DryRun.update_all_packages() {
         Ok((output, _)) => {
             let mut pending_updates = Vec::new();
             for line in output.split('\n') {
@@ -256,7 +265,7 @@ pub fn package_is_missing(package: &str) -> bool {
 // This function updates the package tree metadata for Gentoo Linux
 //
 pub fn sync_package_tree() {
-    let _ = OsCall::NonInteractive
+    let _ = OsCall::Spinner
         .execute("eix-sync", "Syncing package tree")
         .exit_if_failed();
 }
@@ -328,7 +337,7 @@ pub fn eclean_distfiles() {
 
 // eix_update resynchronises the eix database with the state of the currently installed packages
 pub fn eix_update() {
-    let _ = OsCall::NonInteractive
+    let _ = OsCall::Spinner
         .execute("eix-update", "Initialising package database")
         .exit_if_failed();
 }
@@ -401,14 +410,14 @@ pub fn check_and_install_deps() {
                 prompt::revchevrons(Color::Yellow),
                 &package[0]
             );
-            let _ = OsCall::NonInteractive
+            let _ = OsCall::Spinner
                 .execute(
                     &["emerge --quiet -v ", &package[0]].concat(),
                     &["Installing ", &package[0]].concat(),
                 )
                 .exit_if_failed();
             if !&package[2].eq("") {
-                let _ = OsCall::NonInteractive
+                let _ = OsCall::Spinner
                     .execute(package[2], "Post installation configuration")
                     .exit_if_failed();
             }
@@ -518,13 +527,17 @@ pub fn fetch_sources(package_vec: &Vec<&str>) {
 
 // Shortens a package name for more aesthetic display to user
 // e.g sys-cluster/kube-scheduler-1.29.1::gentoo to sys-cluster/kube-scheduler
-pub fn shorten(packagename: &str) -> String {
-    let regularexpression = Regex::new(r"(.*)-[0-9].*").unwrap();
-    if let Some(capture) = regularexpression.captures(packagename) {
-        capture[1].to_string()
-    } else {
-        packagename.to_string()
+pub fn shortname(packagename: &str) -> String {
+    let mut position = packagename.len();
+    let mut _previous = ' ';
+    for (i, c) in packagename.chars().enumerate() {
+        if c.is_numeric() && _previous == '-' {
+            position = i;
+            break;
+        }
+        _previous = c;
     }
+    packagename[0..position - 1].to_string()
 }
 
 // Calculates the longest length of shortened package names in a vector of absolute package names
@@ -532,7 +545,7 @@ pub fn longest(vec_of_strings: &Vec<&str>) -> u16 {
     let mut longest_length = 0;
     let mut _thislen = 0;
     for string_to_consider in vec_of_strings {
-        let shortened_string = shorten(string_to_consider);
+        let shortened_string = shortname(string_to_consider);
         _thislen = shortened_string.len() as u16;
         if _thislen > longest_length {
             longest_length = _thislen;
@@ -551,7 +564,7 @@ pub fn package_list(plist: &Vec<&str>) {
     let number_of_items_per_line = width / (max_length + spaces);
     let mut counter = 0;
     for item in plist {
-        let shortitem = shorten(item);
+        let shortitem = shortname(item);
         print!("{shortitem}    ");
         counter += 1;
         if counter >= number_of_items_per_line {
