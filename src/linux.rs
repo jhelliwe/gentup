@@ -15,7 +15,8 @@ use terminal_spinners::{SpinnerBuilder, LINE};
 // Define a new type, OsCall which executes an external OS command
 pub enum OsCall {
     Interactive, // stdin, stdout and stderr are left attached to the tty allowing the user to interact
-    Spinner,     // stdout is piped allowing OsCall to capture the stdout and return it as a String
+    Spinner,     // stdout is piped allowing OsCall to capture the stdout and return it as a String.
+    // During execution, a progress spinner is rendered
     Quiet, // stdout and stderr are piped allowing OsCall to capture them and return them in a String
 }
 pub type ShellOutResult = Result<(String, i32), Box<dyn Error>>; // ShellOutResult is returned from an OsCall

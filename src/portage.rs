@@ -15,9 +15,9 @@ use terminal_spinners::{SpinnerBuilder, LINE};
 
 // Describe actions to be taken with the package manager
 #[derive(PartialEq)]
-pub enum Gentoo {
+pub enum PackageManager {
     DryRun,
-    FullRun,
+    NoDryRun,
     PreserveKernel,
     AllPackages,
 }
@@ -26,15 +26,15 @@ pub enum Gentoo {
 pub type Orphans = (i32, String);
 
 // Describe methods used with package manager tools
-impl Gentoo {
+impl PackageManager {
     // Perform an update of the @world set (full system update)
     pub fn update_all_packages(self) -> ShellOutResult {
         match self {
-            Gentoo::FullRun => OsCall::Interactive.execute(
+            PackageManager::NoDryRun => OsCall::Interactive.execute(
                 "emerge --quiet -uNDv --with-bdeps y --changed-use --complete-graph @world",
                 "Updating world set",
             ),
-            Gentoo::DryRun => {
+            PackageManager::DryRun => {
                 OsCall::Spinner.execute("emerge -puDv @world", "Checking for updates")
             }
             _ => Ok((String::new(), 0)),
@@ -48,7 +48,7 @@ impl Gentoo {
     pub fn depclean(self) -> Orphans {
         let mut kernels = String::new();
         match self {
-            Gentoo::DryRun => {
+            PackageManager::DryRun => {
                 if let Ok((output, _)) = OsCall::Spinner
                     .execute("emerge -p --depclean", "Checking for orphaned dependencies")
                     .exit_if_failed()
@@ -94,7 +94,7 @@ impl Gentoo {
 
                 (0, String::new())
             }
-            Gentoo::PreserveKernel => {
+            PackageManager::PreserveKernel => {
                 let _ = OsCall::Interactive.execute(
                 "emerge -a --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
                 "Removing orphaned dependencies",
@@ -102,7 +102,7 @@ impl Gentoo {
                 Prompt::PressReturn.askuser("Please verify the output of emerge --depclean above");
                 (0, String::new())
             }
-            Gentoo::AllPackages => {
+            PackageManager::AllPackages => {
                 let _ = OsCall::Interactive
                     .execute(
                         "emerge --ask --depclean",
@@ -124,7 +124,7 @@ impl Gentoo {
     // linked at run-time
     pub fn revdep_rebuild(self) -> bool {
         match self {
-            Gentoo::DryRun => {
+            PackageManager::DryRun => {
                 if let Ok((output, _)) = OsCall::Spinner
                     .execute("revdep-rebuild -ip", "Checking reverse dependencies")
                     .exit_if_failed()
@@ -146,7 +146,7 @@ impl Gentoo {
                 );
                 false
             }
-            Gentoo::FullRun => {
+            PackageManager::NoDryRun => {
                 let _ = OsCall::Interactive
                     .execute("revdep-rebuild", "Rebuilding reverse dependencies")
                     .exit_if_failed();
@@ -161,7 +161,7 @@ impl Gentoo {
 // List and fetch pending updates. Returns "true" if there are any pending updates
 // Returns false if there are no pending updates.
 pub fn get_pending_updates(background_fetch: bool) -> bool {
-    match Gentoo::DryRun.update_all_packages() {
+    match PackageManager::DryRun.update_all_packages() {
         Ok((output, _)) => {
             let mut pending_updates = Vec::new();
             for line in output.split('\n') {
@@ -328,7 +328,6 @@ pub fn eclean_kernel() {
 }
 
 // This function removes old unused package tarballs
-//
 pub fn eclean_distfiles() {
     let _ = OsCall::Interactive
         .execute("eclean -d distfiles", "Cleaning unused distfiles")

@@ -7,6 +7,11 @@
 use crate::VERSION;
 use std::env::{self, Args};
 
+// Define an API for checking command line arguments
+// Currently there are two hooks into the API
+// 1. ArgCheck::parse() which parses the command line arguments that the user supplied
+// 2. .getflag() which returns true if a named command line option was set by the user
+
 // Define a single command line argument
 #[derive(Debug)]
 pub struct ArgumentStruct {
@@ -17,7 +22,7 @@ pub struct ArgumentStruct {
 }
 
 // Define a vector of command line arguments
-pub type ArgV = Vec<ArgumentStruct>;
+pub type ArgCheck = Vec<ArgumentStruct>;
 
 // Define methods of searching the argument vector
 pub trait Search {
@@ -48,7 +53,7 @@ impl ArgumentStruct {
     // We only have to add new command line switch options in this part of the code. No other
     // modifications to the rest of the arg.rs file should be required
     // Build a Vector of ArgumentStructs that this project accepts as valid command line syntax
-    fn build() -> ArgV {
+    fn build() -> ArgCheck {
         let mut valid_args = vec![ArgumentStruct::from(
             "b",
             "background",
@@ -93,7 +98,7 @@ impl ArgumentStruct {
     }
 }
 
-impl Search for ArgV {
+impl Search for ArgCheck {
     // Return true if the user supplied command line switch is found to be correct
     // The search finds matches for both short and long command line switches
     fn contains(&self, supplied: &str) -> bool {
@@ -165,7 +170,7 @@ impl Search for ArgV {
     }
 
     // parse() is a private function dealing with private variables that are not exposed to the
-    // calling code. The only hooks exposed to calling code is the ArgV::parse() method. The only
+    // calling code. The only hooks exposed to calling code is the ArgCheck::parse() method. The only
     // thing the calling code has to worry about is if the returning Result enum is Ok or Err.
     // Ok means the user-supplied command line arguments made sense.
     // Err means the user-supplied command line arguments were syntactically incorrect
@@ -187,7 +192,7 @@ impl Search for ArgV {
                 return Err("You need to be root to run this".to_string());
             }
         }
-        let mut valid_args: ArgV = ArgumentStruct::build();
+        let mut valid_args: ArgCheck = ArgumentStruct::build();
         let mut first = true;
         for arg in args {
             if first {
