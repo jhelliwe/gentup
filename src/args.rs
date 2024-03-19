@@ -8,9 +8,10 @@ use crate::VERSION;
 use std::env::{self, Args};
 
 // Define an API for checking command line arguments
-// Currently there are two hooks into the API
+// Currently there are 3 hooks into the API
 // 1. ArgCheck::parse() which parses the command line arguments that the user supplied
-// 2. .getflag() which returns true if a named command line option was set by the user
+// 2. A method on ArgCheck called .get() which returns true if a named command line option was set by the user
+// 3. ArgumentStruct::from() that can be used to construct a new command line option
 
 // Define a single command line argument
 #[derive(Debug)]
@@ -29,11 +30,11 @@ pub trait Search {
     fn contains(&self, supplied: &str) -> bool;
     fn setflag(&mut self, flag: &char);
     fn setflag_from_long(&mut self, flag: String);
-    fn getflag(&self, flag: &str) -> bool;
+    fn get(&self, flag: &str) -> bool;
     fn help(&self) -> String;
     fn usage(&self) -> String;
     fn version() -> String;
-    fn parse(args: Args) -> Result<Self, String>
+    fn parse(self, args: Args) -> Result<Self, String>
     where
         Self: Sized;
 }
@@ -41,60 +42,13 @@ pub trait Search {
 // Define the functions for the methods for a command line argument
 impl ArgumentStruct {
     // Construct an ArgumentStruct from separate input variables
-    fn from(short: &str, long: &str, desc: &str) -> Self {
+    pub fn from(short: &str, long: &str, desc: &str) -> Self {
         ArgumentStruct {
             short: short.to_string(),
             long: long.to_string(),
             desc: desc.to_string(),
             switch: false,
         }
-    }
-
-    // We only have to add new command line switch options in this part of the code. No other
-    // modifications to the rest of the arg.rs file should be required
-    // Build a Vector of ArgumentStructs that this project accepts as valid command line syntax
-    fn build() -> ArgCheck {
-        let mut valid_args = vec![ArgumentStruct::from(
-            "b",
-            "background",
-            "Perform source fetching in the background during update",
-        )];
-        valid_args.push(ArgumentStruct::from(
-            "c",
-            "cleanup",
-            "Perform cleanup tasks after a successful upgrade",
-        ));
-        valid_args.push(ArgumentStruct::from(
-            "f",
-            "force",
-            "Force eix-sync, bypassing the timestamp check",
-        ));
-        valid_args.push(ArgumentStruct::from(
-            "h",
-            "help",
-            "Display this help text, then exit",
-        ));
-        valid_args.push(ArgumentStruct::from(
-            "o",
-            "optional",
-            "Install optional packages from /etc/default/gentup",
-        ));
-        valid_args.push(ArgumentStruct::from(
-            "t",
-            "trim",
-            "Perform an fstrim after the upgrade",
-        ));
-        valid_args.push(ArgumentStruct::from(
-            "u",
-            "unattended",
-            "Unattended upgrade - only partially implemented",
-        ));
-        valid_args.push(ArgumentStruct::from(
-            "V",
-            "version",
-            "Display the program version",
-        ));
-        valid_args
     }
 }
 
@@ -131,7 +85,7 @@ impl Search for ArgCheck {
     }
 
     // Get the command line switch setting for a named long flag
-    fn getflag(&self, flag: &str) -> bool {
+    fn get(&self, flag: &str) -> bool {
         for argsearch in self {
             if argsearch.long.eq(&flag) {
                 return argsearch.switch;
@@ -169,18 +123,18 @@ impl Search for ArgCheck {
         format!("gentup version {}", VERSION)
     }
 
-    // parse() is a private function dealing with private variables that are not exposed to the
-    // calling code. The only hooks exposed to calling code is the ArgCheck::parse() method. The only
-    // thing the calling code has to worry about is if the returning Result enum is Ok or Err.
-    // Ok means the user-supplied command line arguments made sense.
+    // The parse function is exposed as an API to calling code. It takes a Vector of valid syntax
+    // and the user supplied command line arguments. When it has parsed the args it returns a
+    // Result. Ok means the user-supplied command line arguments made sense.
     // Err means the user-supplied command line arguments were syntactically incorrect
     //
     // If the returning Result is Ok, the calling code can then call methods on the Vector like
-    // .getflag("--force") which will return true if the flag was set by the user. Neat
+    // .get("--force") which will return true if the flag was set by the user. Neat
     //
-    // Adding new command line flags as the project is modified now barely requires any logic
+    // Adding new command line flags as the project is modified/extended will not require any logic
     // changes to the argument parsing code.
-    fn parse(args: Args) -> Result<Self, String> {
+    //
+    fn parse(mut self, args: Args) -> Result<Self, String> {
         // Check we are root
         match env::var("USER") {
             Ok(val) => {
@@ -192,7 +146,6 @@ impl Search for ArgCheck {
                 return Err("You need to be root to run this".to_string());
             }
         }
-        let mut valid_args: ArgCheck = ArgumentStruct::build();
         let mut first = true;
         for arg in args {
             if first {
@@ -201,33 +154,33 @@ impl Search for ArgCheck {
             }
             match &arg[..] {
                 "-h" | "--help" => {
-                    return Err(Self::help(&valid_args));
+                    return Err(Self::help(&self));
                 }
                 "-V" | "--version" => {
                     return Err(Self::version());
                 }
                 supplied => {
                     if supplied.contains("--") {
-                        if valid_args.contains(supplied) {
-                            valid_args.setflag_from_long(supplied.to_string());
+                        if self.contains(supplied) {
+                            self.setflag_from_long(supplied.to_string());
                         } else {
-                            return Err(Self::usage(&valid_args));
+                            return Err(Self::usage(&self));
                         }
                     } else {
                         for individual in supplied.chars() {
                             if individual.eq(&'-') {
                                 continue;
                             }
-                            if valid_args.contains(&(individual.to_string())) {
-                                valid_args.setflag(&individual);
+                            if self.contains(&(individual.to_string())) {
+                                self.setflag(&individual);
                             } else {
-                                return Err(Self::usage(&valid_args));
+                                return Err(Self::usage(&self));
                             }
                         }
                     }
                 }
             }
         }
-        Ok(valid_args)
+        Ok(self)
     }
 }

@@ -2,7 +2,7 @@
 // Written by John Helliwell
 // https://github.com/jhelliwe
 
-const VERSION: &str = "0.43a";
+const VERSION: &str = "0.44a";
 
 /* This program is free software: you can redistribute it
  * and/or modify it under the terms of the GNU General
@@ -26,7 +26,7 @@ pub mod portage; // Interacts with the Portage package manager
 pub mod prompt; // Asks the user permission to continue
 
 use crate::{
-    args::{ArgCheck, Search},
+    args::{ArgCheck, ArgumentStruct, Search},
     linux::CouldFail,
     portage::PackageManager,
     prompt::Prompt,
@@ -41,9 +41,55 @@ use std::{env, io, process};
 // main is the entry point for the compiled binary executable
 //
 fn main() {
-    // First, parse the command line arguments
+    // Generate a valid command line argument syntax for the project. Adding new functionality is
+    // as simple as adding to the following Vector
     //
-    match ArgCheck::parse(env::args()) {
+    let mut arg_syntax = vec![ArgumentStruct::from(
+        "b",
+        "background",
+        "Perform source fetching in the background during update",
+    )];
+    arg_syntax.push(ArgumentStruct::from(
+        "c",
+        "cleanup",
+        "Perform cleanup tasks after a successful upgrade",
+    ));
+    arg_syntax.push(ArgumentStruct::from(
+        "f",
+        "force",
+        "Force package tree sync, bypassing the timestamp check",
+    ));
+    arg_syntax.push(ArgumentStruct::from(
+        "h",
+        "help",
+        "Display this help text, then exit",
+    ));
+    arg_syntax.push(ArgumentStruct::from(
+        "o",
+        "optional",
+        "Install optional packages listed in /etc/default/gentup",
+    ));
+    arg_syntax.push(ArgumentStruct::from(
+        "t",
+        "trim",
+        "Perform an fstrim after the upgrade",
+    ));
+    arg_syntax.push(ArgumentStruct::from(
+        "u",
+        "unattended",
+        "Unattended upgrade - only partially implemented",
+    ));
+    arg_syntax.push(ArgumentStruct::from(
+        "V",
+        "version",
+        "Display the program version",
+    ));
+
+    // Parse the command line arguments supplied by the user
+    // The Result is either Ok or Err to indicate if the arguments were parsable according to the
+    // arg_syntax we generated above
+    //
+    match ArgCheck::parse(arg_syntax, env::args()) {
         Err(error) => {
             // Command line arguments are incorrect - inform the user and exit
             eprintln!("{}", error);
@@ -79,7 +125,7 @@ fn main() {
             // This is mostly useful to get a newly installed bare-bones Gentoo install into a more
             // complete baseline state
             //
-            if arguments.getflag("optional") {
+            if arguments.get("optional") {
                 portage::check_and_install_optional_packages();
             }
 
@@ -94,7 +140,7 @@ fn main() {
             // The too recent logic is to avoid abusing the rsync.gentoo.org rotation which
             // asks that users do not sync more than once per day
             //
-            if arguments.getflag("force") || !portage::too_recent() {
+            if arguments.get("force") || !portage::too_recent() {
                 portage::sync_package_tree();
             }
 
@@ -110,11 +156,11 @@ fn main() {
             // Present a list of packages to be updated to the screen
             // If there are no packages pending updates, we can quit at this stage
             //
-            let pending = portage::get_pending_updates(arguments.getflag("background"));
-            if !pending && !arguments.getflag("cleanup") {
+            let pending = portage::get_pending_updates(arguments.get("background"));
+            if !pending && !arguments.get("cleanup") {
                 process::exit(0);
             }
-            if !arguments.getflag("unattended") {
+            if !arguments.get("unattended") {
                 Prompt::PressReturn.askuser("Please review");
             }
 
@@ -159,7 +205,7 @@ fn main() {
                 // check to see if the running kernel will be depcleaned
                 //
                 if kernels.contains(&linux::running_kernel()) {
-                    if arguments.getflag("cleanup") {
+                    if arguments.get("cleanup") {
                         PackageManager::PreserveKernel.depclean(); // depcleans everything excluding old kernel packages
                     }
                     println!(
@@ -168,14 +214,14 @@ fn main() {
                     );
                     println!("{} All done!!!", prompt::chevrons(Color::Green));
                     process::exit(0);
-                } else if arguments.getflag("cleanup") || kernels.ne("") {
+                } else if arguments.get("cleanup") || kernels.ne("") {
                     PackageManager::AllPackages.depclean(); // depcleans everything
                 }
             }
 
             // Check for broken Reverse dependencies
             //
-            if arguments.getflag("cleanup") || kernels.ne("") {
+            if arguments.get("cleanup") || kernels.ne("") {
                 if !PackageManager::DryRun.revdep_rebuild() {
                     PackageManager::NoDryRun.revdep_rebuild();
                 }
@@ -186,7 +232,7 @@ fn main() {
 
                 portage::eclean_kernel(); // Cleanup unused kernels from /usr/src, /boot, /lib/modules and the grub config
 
-                if arguments.getflag("trim") {
+                if arguments.get("trim") {
                     // A full update creates so many GB of temp files it warrants a trim
                     linux::call_fstrim();
                 }
