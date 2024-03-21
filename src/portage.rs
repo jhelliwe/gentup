@@ -1,7 +1,6 @@
-// This source file contains logic which interacts with the Portage package manager
-
 use crate::{
-    linux, linux::CouldFail, linux::OsCall, linux::ShellOutResult, portage, prompt, Prompt,
+    config::PACKAGE_FILE_PATH, linux, linux::CouldFail, linux::OsCall, linux::ShellOutResult,
+    portage, prompt, Prompt,
 };
 use crossterm::{cursor, execute, style::Color};
 use filetime::FileTime;
@@ -13,7 +12,7 @@ use std::{
 };
 use terminal_spinners::{SpinnerBuilder, LINE};
 
-// Describe actions to be taken with the package manager
+// Describe the varying options that can be used with the package manager
 #[derive(PartialEq)]
 pub enum PackageManager {
     DryRun,
@@ -25,9 +24,11 @@ pub enum PackageManager {
 // Describe orphaned packages
 pub type Orphans = (i32, String);
 
-// Describe methods used with package manager tools
+// Deal with the different things we can do with the system's package manager
 impl PackageManager {
+    //
     // Perform an update of the @world set (full system update)
+    //
     pub fn update_all_packages(self) -> ShellOutResult {
         match self {
             PackageManager::NoDryRun => OsCall::Interactive.execute(
@@ -45,6 +46,7 @@ impl PackageManager {
     // php would have pulled in libgd as a dependency. If the user removes php, libgd is not
     // automatically removed. The depclean method here will detect libgd as an orphaned package and
     // will remove it.
+    //
     pub fn depclean(self) -> Orphans {
         let mut kernels = String::new();
         match self {
@@ -122,6 +124,7 @@ impl PackageManager {
     // checking - BUT sometimes Portage misses things. It's always a good idea to go through each
     // installed package and check that the dynamic libraries for each binary resolve and can be
     // linked at run-time
+    //
     pub fn revdep_rebuild(self) -> bool {
         match self {
             PackageManager::DryRun => {
@@ -160,6 +163,7 @@ impl PackageManager {
 
 // List and fetch pending updates. Returns "true" if there are any pending updates
 // Returns false if there are no pending updates.
+//
 pub fn get_pending_updates(background_fetch: bool) -> bool {
     match PackageManager::DryRun.update_all_packages() {
         Ok((output, _)) => {
@@ -309,32 +313,37 @@ pub fn upgrade_package(package: &str) {
 
 // After package installs there are sometimes messages to the user advising them of actions they
 // need to take. These are collected into elog files and displayed here
+//
 pub fn elog_viewer() {
     let _ = OsCall::Interactive.execute("elogv", "Checking for new ebuild logs");
 }
 
 // This function calls the portage config sanity checker
-pub fn eix_test_obsolete() {
+//
+pub fn find_obsolete_configs() {
     let _ = OsCall::Interactive
         .execute("eix-test-obsolete", "Checking obsolete configs")
         .exit_if_failed();
 }
 
 // This function cleans up old kernels
-pub fn eclean_kernel() {
+//
+pub fn clean_old_kernels() {
     let _ = OsCall::Interactive
         .execute("eclean-kernel -Aa", "Cleaning old kernels")
         .exit_if_failed();
 }
 
 // This function removes old unused package tarballs
-pub fn eclean_distfiles() {
+//
+pub fn clean_distfiles() {
     let _ = OsCall::Interactive
         .execute("eclean -d distfiles", "Cleaning unused distfiles")
         .exit_if_failed();
 }
 
 // eix_update resynchronises the eix database with the state of the currently installed packages
+//
 pub fn eix_update() {
     let _ = OsCall::Spinner
         .execute("eix-update", "Initialising package database")
@@ -342,6 +351,7 @@ pub fn eix_update() {
 }
 
 // handle_news checks to see if there is unread news and lists it if required
+//
 pub fn read_news() -> u32 {
     let mut count: u32 = 0;
     if let Ok((output, _)) = OsCall::Quiet
@@ -350,7 +360,7 @@ pub fn read_news() -> u32 {
     {
         count = output.trim().parse().unwrap_or(0);
         if count == 0 {
-            println!("{} No news is good news", prompt::revchevrons(Color::Blue));
+            println!("{} No unread news", prompt::revchevrons(Color::Blue));
         } else {
             println!(
                 "{} You have {} news item(s) to read",
@@ -365,6 +375,7 @@ pub fn read_news() -> u32 {
 }
 
 // dispatch_conf handles pending changes to package configuration files
+//
 pub fn update_config_files() {
     let _ = OsCall::Interactive
         .execute("dispatch-conf", "Merge config file changes")
@@ -372,6 +383,7 @@ pub fn update_config_files() {
 }
 
 // Checks and corrects the ELOG configuration in make.conf
+//
 pub fn configure_elogv() {
     let makeconf = fs::read_to_string("/etc/portage/make.conf");
     if let Ok(contents) = makeconf {
@@ -393,8 +405,9 @@ pub fn configure_elogv() {
     }
 }
 
+// This functions installs hard dependencies of this program if they are missing
+//
 pub fn check_and_install_deps() {
-    // Check the hard dependencies of this program
     let packages_to_check = [
         ["app-portage/eix", "/usr/bin/eix", "eix-update"],
         ["app-portage/gentoolkit", "/usr/bin/equery", ""],
@@ -424,11 +437,10 @@ pub fn check_and_install_deps() {
     }
 }
 
+// This function checks and installs a list of optional packages - the list is taken from
+// PACKAGE_FILE_PATH
+//
 pub fn check_and_install_optional_packages() {
-    // This following list of packages is hardcoded. While this is good for me, other users may be annoyed at
-    // this personal choice. So we get this list read in from a text file. Then the user can modify
-    // it to their requirements. And if the file does not exist, pre-populate it anyway
-
     let packages_to_check = [
         "app-portage/cpuid2cpuflags",
         "app-portage/pfl",
@@ -447,9 +459,9 @@ pub fn check_and_install_optional_packages() {
         "dev-vcs/git",
     ];
 
-    // If /etc/default/gentup does not exist, create it with the above contents
-    if !Path::new("/etc/default/gentup").exists() {
-        let path = Path::new("/etc/default/gentup");
+    // If PACKAGE_FILE_PATH does not exist, create it with the above contents
+    if !Path::new(PACKAGE_FILE_PATH).exists() {
+        let path = Path::new(PACKAGE_FILE_PATH);
         let display = path.display();
         let mut file = match File::create(path) {
             Err(why) => panic!("couldn't create {}: {}", display, why),
@@ -463,9 +475,9 @@ pub fn check_and_install_optional_packages() {
         }
     }
 
-    // Read /etc/default/gentup into a Vector of strings
+    // Read PACKAGE_FILE_PATH into a Vector of strings
     let packages_to_check_string =
-        fs::read_to_string("/etc/default/gentup").expect("Error in reading the file");
+        fs::read_to_string(PACKAGE_FILE_PATH).expect("Error in reading the file");
     let mut counter = 0;
     let packages_to_check: Vec<&str> = packages_to_check_string.lines().collect();
     for check in &packages_to_check {
@@ -499,6 +511,8 @@ pub fn check_and_install_optional_packages() {
     let _ = execute!(io::stdout(), cursor::MoveUp(1));
 }
 
+// This function downloads a specified list of package source tarballs from the package repo
+//
 pub fn fetch_sources(package_vec: &Vec<&str>) {
     let mut count = 0;
     let total = package_vec.len();
@@ -526,6 +540,7 @@ pub fn fetch_sources(package_vec: &Vec<&str>) {
 
 // Shortens a package name for more aesthetic display to user
 // e.g sys-cluster/kube-scheduler-1.29.1::gentoo to sys-cluster/kube-scheduler
+//
 pub fn shortname(packagename: &str) -> String {
     let mut position = packagename.len();
     let mut _previous = ' ';
@@ -540,6 +555,7 @@ pub fn shortname(packagename: &str) -> String {
 }
 
 // Calculates the longest length of shortened package names in a vector of absolute package names
+//
 pub fn longest(vec_of_strings: &Vec<&str>) -> u16 {
     let mut longest_length = 0;
     let mut _thislen = 0;
@@ -554,6 +570,7 @@ pub fn longest(vec_of_strings: &Vec<&str>) -> u16 {
 }
 
 // Pretty prints a list of packages
+//
 pub fn package_list(plist: &Vec<&str>) {
     println!();
     let spaces: u16 = 4;

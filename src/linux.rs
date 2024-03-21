@@ -1,13 +1,15 @@
 use crate::prompt;
 use crossterm::{
+    cursor, execute,
     style::{Color, SetForegroundColor},
     terminal::size,
+    terminal::{self, ClearType},
 };
 use execute::Execute;
 use std::{
     error::Error,
     fs::File,
-    io::{BufRead, BufReader},
+    io::{self, BufRead, BufReader},
     process::{self, Command, Stdio},
 };
 use terminal_spinners::{SpinnerBuilder, LINE};
@@ -15,17 +17,20 @@ use terminal_spinners::{SpinnerBuilder, LINE};
 // Define a new type, OsCall which executes an external OS command
 pub enum OsCall {
     Interactive, // stdin, stdout and stderr are left attached to the tty allowing the user to interact
-    Spinner,     // stdout is piped allowing OsCall to capture the stdout and return it as a String.
+    Spinner, // stdout is redirected allowing OsCall to capture the stdout and return it as a String.
     // During execution, a progress spinner is rendered
-    Quiet, // stdout and stderr are piped allowing OsCall to capture them and return them in a String
+    Quiet, // stdout and stderr are redirected allowing OsCall to capture them and return them in a String
 }
+
 pub type ShellOutResult = Result<(String, i32), Box<dyn Error>>; // ShellOutResult is returned from an OsCall
+
 pub trait CouldFail {
     // OsCalls could fail, and the failures need to be handled
     fn exit_if_failed(self) -> ShellOutResult;
 }
+
 impl CouldFail for ShellOutResult {
-    // Generic handler for failed OsCalls
+    // Handler for failed OsCalls
     fn exit_if_failed(self) -> ShellOutResult {
         match self {
             Ok((_, status)) => {
@@ -49,6 +54,7 @@ impl CouldFail for ShellOutResult {
         self
     }
 }
+
 impl OsCall {
     // Fork and exec an external command. Waits for completion
     pub fn execute(self, command_line: &str, status: &str) -> ShellOutResult {
@@ -84,7 +90,7 @@ impl OsCall {
                     result
                 }
                 // Interactive - executes a command via the OS leaving stdin and stdout attached to
-                // the tty
+                // the tty. Does not capture stdout at all
                 OsCall::Interactive => {
                     println!(
                         "{} {}: {}{}{}",
@@ -107,21 +113,27 @@ impl OsCall {
         };
         match results {
             Ok(output) => Ok((
+                // The command completed so we return the stdout and the exit status code wrapped
+                // in a Result enum
                 (String::from_utf8_lossy(&output.stdout).to_string()),
                 output.status.code().unwrap(),
             )),
+            // The command failed with an error
             Err(errors) => Err(Box::new(errors)),
         }
     }
 }
 
 pub fn call_fstrim() {
+    // A good example of how to use OsCall with the .execute and .exit_if_failed methods we defined
+    // above
     let _ = OsCall::Spinner
         .execute("fstrim -a", "Trimming filesystems")
         .exit_if_failed();
 }
 
-// Returns the name of the Linux distro we are running on.
+// Returns the name of the Linux distro we are running on. Returns a failure if it isn't the distro
+// we are looking for
 pub fn check_distro(required_distro: &str) -> Result<String, String> {
     let os_release = File::open("/etc/os-release").expect("/etc/os-release should be readable!");
     let readbuf = BufReader::new(os_release);
@@ -175,4 +187,13 @@ pub fn running_kernel() -> String {
     } else {
         String::new()
     }
+}
+
+// There are many ways to clear the screen from Rust. This is one of them
+pub fn clearscreen() {
+    let _ = execute!(
+        io::stdout(),
+        terminal::Clear(ClearType::All),
+        cursor::MoveTo(0, 0)
+    );
 }

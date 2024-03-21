@@ -1,27 +1,34 @@
 use crate::Prompt::*;
 use crossterm::style::{Color, SetForegroundColor};
-use std::{io, process};
+use std::{
+    io::{self, stdout, Write},
+    process,
+};
 
 // Prompt the user to continue, skip, quit etc
 #[derive(PartialEq)]
 pub enum Prompt {
     AllowSkip,
     PressReturn,
+    Options,
 }
 impl Prompt {
-    pub fn askuser(self, userinput: &str) -> bool {
-        if self != PressReturn {
-            println!(
+    pub fn askuser(self, prompt: &str) -> Option<String> {
+        match self {
+            AllowSkip => println!(
                 "{} {}: Press return to continue, s to skip, q to quit",
                 chevrons(Color::Green),
-                userinput
-            );
-        } else {
-            println!(
+                prompt
+            ),
+            PressReturn => println!(
                 "{} {}: Press return to continue, or q to quit",
                 chevrons(Color::Green),
-                userinput,
-            );
+                prompt
+            ),
+            Options => {
+                print!("{} {}: ", chevrons(Color::Green), prompt);
+                let _ = stdout().flush();
+            }
         }
         let mut user_input = String::new();
         io::stdin()
@@ -33,9 +40,9 @@ impl Prompt {
         }
         if user_input.eq("s\n") {
             println!("{} Skipping at user request", chevrons(Color::Green));
-            return false;
+            return None;
         }
-        true
+        Some(user_input)
     }
 }
 
