@@ -91,13 +91,23 @@ fn main() {
         "Display the program version",
     ));
 
+    // If this is not Gentoo Linux, explain this only works on Gentoo and exit
+    if let Err(error) = linux::check_distro("Gentoo") {
+        eprintln!("{error}");
+        process::exit(1);
+    }
+
     // There is a configuration file for this program, by default in /etc/conf.d/gentup
-    // Load the saved config (or generate defaults if it doesn't exist)
+    // Load the saved config (or if no config file, use defaults)
     //
     let running_config = if Path::new(&CONFIG_FILE_PATH).exists() {
         Config::load()
     } else {
-        Config::build_default().save()
+        println!(
+            "{} No configuration file found. Using defaults",
+            prompt::revchevrons(Color::Yellow)
+        );
+        Config::build_default()
     };
 
     // Parse the command line arguments supplied by the user
@@ -112,31 +122,39 @@ fn main() {
         }
         Ok(arguments) => {
             linux::clearscreen();
+            println!("\nWelcome to the Gentoo Linux Updater v{}\n", VERSION);
 
-            // =============
-            // PREREQUSITES
-            // =============
-
-            // Check that this is running on Gentoo. If not, exit with an error
-            //
-            match linux::check_distro("Gentoo") {
-                Err(error) => {
-                    eprintln!("{error}");
-                    process::exit(1);
-                }
-                Ok(distro) => {
-                    println!("\nWelcome to the {} Updater v{}\n", distro, VERSION);
-                }
-            }
-
-            // Handle program setup
+            // Handle configuration setup if the user selected the --setup option
             if arguments.get("setup") {
                 config::setup();
                 process::exit(0);
             }
 
-            portage::check_and_install_deps(); // This call installs any missing dependencies of this program
+            // Inform the user of the behaviours read from the config file
+            if running_config.clean_default || arguments.get("clean") {
+                println!(
+                    "{} Post-update cleanup is enabled",
+                    prompt::revchevrons(Color::Green)
+                );
+                if running_config.trim_default || arguments.get("trim") {
+                    println!(
+                        "{} Post-update filesystem trim is enabled",
+                        prompt::revchevrons(Color::Green)
+                    );
+                }
+            } else if running_config.trim_default || arguments.get("trim") {
+                println!(
+                    "{} Post-update filesystem trim is pending",
+                    prompt::revchevrons(Color::Yellow)
+                );
+            }
             
+            // =============
+            // PREREQUSITES
+            // =============
+
+            portage::check_and_install_deps(); // This call installs any missing dependencies of this program
+
             // Check that elogv is configured - elogv collects post-installation notes for package
             // updates, so the user is notified about actions they need to take. If elogv is
             // installed but not configured, this function call will configure elogv
@@ -189,7 +207,7 @@ fn main() {
             //
             println!("{} Checking Gentoo news", prompt::chevrons(Color::Green));
             if portage::read_news() > 0 {
-                Prompt::PressReturn.askuser("Press CR");
+                Prompt::PressReturn.askuser("Press return");
             }
 
             // ==================

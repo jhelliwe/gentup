@@ -1,5 +1,3 @@
-// TODO - stop storing the users SMTP credentials in plaintext. Will encrypt
-//
 use crate::{linux::OsCall, mail, prompt, Prompt};
 use crossterm::style::Color;
 use std::{
@@ -20,7 +18,8 @@ pub struct Config {
     pub trim_default: bool,
     pub email_address: String,
     pub mta_fqdn: String,
-    pub auth: String,
+    pub auth_method: String,
+    pub encrypted_passwd: String,
     pub passwd: String,
 }
 
@@ -34,14 +33,14 @@ impl fmt::Display for Config {
             trim_default: {}\n\
             email_address: {}\n\
             mta_fqdn: {}\n\
-            auth: {}\n\
-            passwd: {}",
+            auth_method: {}\n\
+            encrypted_passwd: {}",
             self.clean_default,
             self.trim_default,
             self.email_address,
             self.mta_fqdn,
-            self.auth,
-            self.passwd,
+            self.auth_method,
+            self.encrypted_passwd,
         )
     }
 }
@@ -55,7 +54,8 @@ impl Config {
             trim_default: false,
             email_address: "root@localhost".to_string(),
             mta_fqdn: "localhost".to_string(),
-            auth: "NONE".to_string(),
+            auth_method: "NONE".to_string(),
+            encrypted_passwd: "".to_string(),
             passwd: "".to_string(),
         }
     }
@@ -72,7 +72,16 @@ impl Config {
             }
             Ok(config_file) => config_file,
         };
-        let _ = writeln!(config_file, "# Configuration options for gentup\n");
+        let _ = writeln!(
+            config_file,
+            "# Configuration options for gentup\n\
+            # post-update cleanup, true or false\n\
+            # post-update trim, true or false\n\
+            # email address to send update reports to\n\
+            # fully qualified domain name of the mail server\n\
+            # mail server authentication method: (the list of methods)\n\
+            "
+        );
         let _ = writeln!(config_file, "{}", self);
         self
     }
@@ -128,11 +137,11 @@ impl Config {
                     if let Some(param) = getparam("mta_fqdn:", line) {
                         running_config.mta_fqdn = param;
                     }
-                    if let Some(param) = getparam("auth:", line) {
-                        running_config.auth = param;
+                    if let Some(param) = getparam("auth_method:", line) {
+                        running_config.auth_method = param;
                     }
-                    if let Some(param) = getparam("passwd:", line) {
-                        running_config.passwd = param;
+                    if let Some(param) = getparam("encrypted_passwd:", line) {
+                        running_config.encrypted_passwd = param;
                     }
                 }
             }
@@ -157,7 +166,7 @@ pub fn setup() {
     //
     // Load or create the configuration file
     //
-    let running_config: Config = if !Path::new(&CONFIG_FILE_PATH).exists() {
+    let mut running_config: Config = if !Path::new(&CONFIG_FILE_PATH).exists() {
         println!(
             "{} Creating new configuration file",
             prompt::revchevrons(Color::Yellow)
@@ -187,6 +196,7 @@ pub fn setup() {
         if answer.eq("y\n") {
             let _ = OsCall::Interactive
                 .execute(&["vi ", &CONFIG_FILE_PATH].concat(), "Launching editor");
+            running_config = Config::load();
         }
     }
     //
@@ -216,7 +226,8 @@ pub fn setup() {
     let optans = Prompt::Options.askuser("Setup email? [y/n/q] ");
     if let Some(answer) = optans {
         if answer.eq("y\n") {
-            mail::setup();
+            running_config = mail::add_secret(running_config);
+            let _ = Config::save(running_config);
         }
     }
     println!("{} Setup complete", prompt::chevrons(Color::Green));

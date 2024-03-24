@@ -1,6 +1,6 @@
 [package]
 name = "gentup"
-version = "0.4.5"
+version = "0.4.6"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -11,6 +11,8 @@ chrono = "0.4.31"
 crossterm = "0.27.0"
 execute = "0.2.13"
 terminal-spinners = "0.3.2"
+magic-crypt = "3.1.13"
+psph = "0.0.1"
 
 [profile.release]
 lto = true
