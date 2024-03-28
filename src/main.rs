@@ -144,7 +144,7 @@ fn main() {
                 }
             } else if running_config.trim_default || arguments.get("trim") {
                 println!(
-                    "{} Post-update filesystem trim is pending",
+                    "{} Post-update filesystem trim is pending on cleanup",
                     prompt::revchevrons(Color::Yellow)
                 );
             }
@@ -194,17 +194,14 @@ fn main() {
             // unless the user specifically asked for a cleanup to be run
             //
             let pending_updates = portage::get_pending_updates(arguments.get("background"));
-            if !pending_updates && (!arguments.get("cleanup") || !running_config.cleanup_default) {
+            if !pending_updates && (!arguments.get("cleanup") && !running_config.cleanup_default) {
                 process::exit(0);
             }
 
-            // Check the news - if there is news, list and read it
-            // TODO - make read_news email the user instead of interrupting the program flow
+            // Check the news - if there is news, email it to the user
             //
             println!("{} Checking Gentoo news", prompt::chevrons(Color::Green));
-            if portage::read_news() > 0 {
-                Prompt::PressReturn.askuser("Press return");
-            }
+            let _ = portage::read_news(&running_config);
 
             // ==================
             // FULL SYSTEM UPDATE

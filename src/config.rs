@@ -1,4 +1,7 @@
-use crate::{linux::{self, OsCall}, mail, prompt, Prompt};
+use crate::{
+    linux::{self, OsCall},
+    mail, prompt, Prompt,
+};
 use crossterm::style::Color;
 use std::{
     fmt,
@@ -144,11 +147,11 @@ pub fn setup() {
         } else {
             Config::load()
         };
-        
+
         //
         // Display the running configuration
         //
-       
+
         println!(
             "{} The running configuration contains :\n\n{}",
             prompt::revchevrons(Color::Green),

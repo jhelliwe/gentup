@@ -20,7 +20,7 @@ pub struct ArgumentStruct {
 //
 pub type ArgCheck = Vec<ArgumentStruct>;
 
-// Define traits - these are public so that any calling code can use these methods against a
+// Define methods that search the
 // Vector of valid command line options
 //
 pub trait Search {

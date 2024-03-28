@@ -1,6 +1,6 @@
 use crate::{
-    config::PACKAGE_FILE_PATH, linux, linux::CouldFail, linux::OsCall, linux::ShellOutResult,
-    portage, prompt, Prompt,
+    config::PACKAGE_FILE_PATH, linux, linux::CouldFail, linux::OsCall, linux::ShellOutResult, mail,
+    portage, prompt, Config, Prompt,
 };
 use crossterm::{cursor, execute, style::Color};
 use filetime::FileTime;
@@ -350,9 +350,9 @@ pub fn eix_update() {
         .exit_if_failed();
 }
 
-// handle_news checks to see if there is unread news and lists it if required
+// handle_news checks to see if there is unread news and emails it if required
 //
-pub fn read_news() -> u32 {
+pub fn read_news(running_config: &Config) -> u32 {
     let mut count: u32 = 0;
     if let Ok((output, _)) = OsCall::Quiet
         .execute("eselect news count new", "")
@@ -367,8 +367,9 @@ pub fn read_news() -> u32 {
                 prompt::revchevrons(Color::Yellow),
                 count,
             );
-            let _ = OsCall::Interactive.execute("eselect news list", "News listing");
-            let _ = OsCall::Interactive.execute("eselect news read", "News listing");
+            if let Ok((output, _)) = OsCall::Quiet.execute("eselect news read", "News listing") {
+                mail::send_email(running_config, String::from("gentoo-news"), output);
+            }
         }
     }
     count
@@ -438,7 +439,8 @@ pub fn check_and_install_deps() {
 }
 
 // This function checks and installs a list of optional packages - the list is taken from
-// PACKAGE_FILE_PATH
+// the config file in config::PACKAGE_FILE_PATH, and although this list of packages is hardcoded
+// here, there is an option for the user to edit this file with the --setup command line option
 //
 pub fn check_and_install_optional_packages() {
     let packages_to_check = [

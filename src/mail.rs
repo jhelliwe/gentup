@@ -7,7 +7,7 @@ use std::{
     process,
 };
 
-pub fn send_email(running_config: &Config, email_body: String) {
+pub fn send_email(running_config: &Config, subject: String, email_body: String) {
     let temp_file_name = format!("/tmp/gentup.{}.eml", process::id());
     {
         let mut temp_file = match File::create(&temp_file_name) {
@@ -26,7 +26,7 @@ pub fn send_email(running_config: &Config, email_body: String) {
         let _ = OsCall::Quiet
             .piped(
                 &["cat ", &temp_file_name].concat(),
-                &["mail -s Test ", &running_config.email_address].concat(),
+                &["mail -s ", &subject, " ", &running_config.email_address].concat(),
             )
             .exit_if_failed();
     }
@@ -36,6 +36,7 @@ pub fn send_email(running_config: &Config, email_body: String) {
 pub fn test_mail(running_config: &Config) {
     send_email(
         running_config,
+        String::from("Test_email"),
         format!(
             "\
     This is a test email from the Gentoo Linux Updater on {}\n\
