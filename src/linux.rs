@@ -122,6 +122,49 @@ impl OsCall {
             Err(errors) => Err(Box::new(errors)),
         }
     }
+
+    // Pipe the stdout from one command into another
+    pub fn piped(self, pipe_from: &str, pipe_to: &str) -> ShellOutResult {
+        match self {
+            OsCall::Quiet => {
+                // build command 1
+                let mut build_from_command = Vec::new();
+                for word in pipe_from.split_whitespace() {
+                    build_from_command.push(word);
+                }
+                let mut from_command = Command::new(build_from_command[0]);
+                for argument in build_from_command.iter().skip(1) {
+                    from_command.arg(argument);
+                }
+                //build command 2
+                let mut build_to_command = Vec::new();
+                for word in pipe_to.split_whitespace() {
+                    build_to_command.push(word);
+                }
+                let mut to_command = Command::new(build_to_command[0]);
+                for argument in build_to_command.iter().skip(1) {
+                    to_command.arg(argument);
+                }
+                //pipe them
+                to_command.stdout(Stdio::piped());
+                let results = from_command.execute_multiple_output(&mut [&mut to_command]);
+                match results {
+                    Ok(output) => Ok((
+                        // The command completed so we return the stdout and the exit status code wrapped
+                        // in a Result enum
+                        (String::from_utf8_lossy(&output.stdout).to_string()),
+                        output.status.code().unwrap(),
+                    )),
+                    // The command failed with an error
+                    Err(errors) => Err(Box::new(errors)),
+                }
+            }
+            _ => {
+                println!("Internal Error: piped() only supports Quiet");
+                process::exit(1);
+            }
+        }
+    }
 }
 
 pub fn call_fstrim() {

@@ -131,7 +131,7 @@ fn main() {
             }
 
             // Inform the user of the behaviours read from the config file
-            if running_config.clean_default || arguments.get("clean") {
+            if running_config.cleanup_default || arguments.get("cleanup") {
                 println!(
                     "{} Post-update cleanup is enabled",
                     prompt::revchevrons(Color::Green)
@@ -148,7 +148,7 @@ fn main() {
                     prompt::revchevrons(Color::Yellow)
                 );
             }
-            
+
             // =============
             // PREREQUSITES
             // =============
@@ -194,12 +194,8 @@ fn main() {
             // unless the user specifically asked for a cleanup to be run
             //
             let pending_updates = portage::get_pending_updates(arguments.get("background"));
-            if !pending_updates && (!arguments.get("cleanup") || !running_config.clean_default) {
+            if !pending_updates && (!arguments.get("cleanup") || !running_config.cleanup_default) {
                 process::exit(0);
-            }
-
-            if !arguments.get("unattended") {
-                Prompt::PressReturn.askuser("Please review");
             }
 
             // Check the news - if there is news, list and read it
@@ -242,7 +238,7 @@ fn main() {
                 // check to see if the running kernel will be depcleaned
                 //
                 if kernels.contains(&linux::running_kernel()) {
-                    if arguments.get("cleanup") || running_config.clean_default {
+                    if arguments.get("cleanup") || running_config.cleanup_default {
                         PackageManager::PreserveKernel.depclean(); // depcleans everything excluding old kernel packages
                     }
                     println!(
@@ -251,7 +247,7 @@ fn main() {
                     );
                     println!("{} All done!!!", prompt::chevrons(Color::Green));
                     process::exit(0);
-                } else if (arguments.get("cleanup") || running_config.clean_default)
+                } else if (arguments.get("cleanup") || running_config.cleanup_default)
                     || kernels.ne("")
                 {
                     PackageManager::AllPackages.depclean(); // depcleans everything
@@ -260,7 +256,7 @@ fn main() {
 
             // Check for broken Reverse dependencies
             //
-            if (arguments.get("cleanup") || running_config.clean_default) || kernels.ne("") {
+            if (arguments.get("cleanup") || running_config.cleanup_default) || kernels.ne("") {
                 if !PackageManager::DryRun.revdep_rebuild() {
                     PackageManager::NoDryRun.revdep_rebuild();
                 }

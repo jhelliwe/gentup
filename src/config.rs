@@ -1,4 +1,4 @@
-use crate::{linux::OsCall, mail, prompt, Prompt};
+use crate::{linux::{self, OsCall}, mail, prompt, Prompt};
 use crossterm::style::Color;
 use std::{
     fmt,
@@ -14,13 +14,9 @@ pub static PACKAGE_FILE_PATH: &str = "/etc/default/gentup";
 // Define a struct to hold the configuration options
 //
 pub struct Config {
-    pub clean_default: bool,
+    pub cleanup_default: bool,
     pub trim_default: bool,
     pub email_address: String,
-    pub mta_fqdn: String,
-    pub auth_method: String,
-    pub encrypted_passwd: String,
-    pub passwd: String,
 }
 
 // Implement a formatter for Config so we can display the contents
@@ -29,18 +25,10 @@ impl fmt::Display for Config {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "clean_default: {}\n\
+            "cleanup_default: {}\n\
             trim_default: {}\n\
-            email_address: {}\n\
-            mta_fqdn: {}\n\
-            auth_method: {}\n\
-            encrypted_passwd: {}",
-            self.clean_default,
-            self.trim_default,
-            self.email_address,
-            self.mta_fqdn,
-            self.auth_method,
-            self.encrypted_passwd,
+            email_address: {}\n",
+            self.cleanup_default, self.trim_default, self.email_address,
         )
     }
 }
@@ -50,13 +38,9 @@ impl Config {
     //
     pub fn build_default() -> Self {
         Config {
-            clean_default: false,
+            cleanup_default: false,
             trim_default: false,
             email_address: "root@localhost".to_string(),
-            mta_fqdn: "localhost".to_string(),
-            auth_method: "NONE".to_string(),
-            encrypted_passwd: "".to_string(),
-            passwd: "".to_string(),
         }
     }
 
@@ -78,8 +62,6 @@ impl Config {
             # post-update cleanup, true or false\n\
             # post-update trim, true or false\n\
             # email address to send update reports to\n\
-            # fully qualified domain name of the mail server\n\
-            # mail server authentication method: (the list of methods)\n\
             "
         );
         let _ = writeln!(config_file, "{}", self);
@@ -125,23 +107,14 @@ impl Config {
         match fileopt {
             Ok(contents) => {
                 for line in contents.lines() {
-                    if let Some(switch) = getswitch("clean_default:", line) {
-                        running_config.clean_default = switch;
+                    if let Some(switch) = getswitch("cleanup_default:", line) {
+                        running_config.cleanup_default = switch;
                     }
                     if let Some(switch) = getswitch("trim_default:", line) {
                         running_config.trim_default = switch;
                     }
                     if let Some(param) = getparam("email_address:", line) {
                         running_config.email_address = param;
-                    }
-                    if let Some(param) = getparam("mta_fqdn:", line) {
-                        running_config.mta_fqdn = param;
-                    }
-                    if let Some(param) = getparam("auth_method:", line) {
-                        running_config.auth_method = param;
-                    }
-                    if let Some(param) = getparam("encrypted_passwd:", line) {
-                        running_config.encrypted_passwd = param;
                     }
                 }
             }
@@ -162,73 +135,58 @@ impl Config {
 // Interactive setup
 //
 pub fn setup() {
-    println!("{} Entering setup", prompt::chevrons(Color::Green));
-    //
-    // Load or create the configuration file
-    //
-    let mut running_config: Config = if !Path::new(&CONFIG_FILE_PATH).exists() {
+    loop {
+        //
+        // Load or create the configuration file
+        //
+        let mut running_config: Config = if !Path::new(&CONFIG_FILE_PATH).exists() {
+            Config::build_default().save()
+        } else {
+            Config::load()
+        };
+        
+        //
+        // Display the running configuration
+        //
+       
         println!(
-            "{} Creating new configuration file",
-            prompt::revchevrons(Color::Yellow)
-        );
-        Config::build_default().save()
-    } else {
-        println!(
-            "{} Reading existing configuration file ({})",
+            "{} The running configuration contains :\n\n{}",
             prompt::revchevrons(Color::Green),
-            CONFIG_FILE_PATH,
+            running_config
         );
-        Config::load()
-    };
-    //
-    // Display the running configuration
-    //
-    println!(
-        "{} The running configuration contains :\n\n{}\n",
-        prompt::revchevrons(Color::Green),
-        running_config
-    );
-    //
-    // Edit the config
-    //
-    let optans = Prompt::Options.askuser("Edit the configuration? [y/n/q] ");
-    if let Some(answer) = optans {
-        if answer.eq("y\n") {
-            let _ = OsCall::Interactive
-                .execute(&["vi ", &CONFIG_FILE_PATH].concat(), "Launching editor");
-            running_config = Config::load();
+
+        //
+        // Display the list of optional packages
+        //
+
+        let optlist = fs::read_to_string(PACKAGE_FILE_PATH);
+        if let Ok(plist) = optlist {
+            println!(
+                "{} Optional package list contains\n\n{}",
+                prompt::revchevrons(Color::Green),
+                plist
+            );
         }
-    }
-    //
-    // Display the list of optional packages
-    //
-    let optlist = fs::read_to_string(PACKAGE_FILE_PATH);
-    if let Ok(plist) = optlist {
-        println!(
-            "{} Optional package list contains\n\n{}",
-            prompt::revchevrons(Color::Green),
-            plist
-        );
-    }
-    //
-    // Edit the list of optional packages
-    //
-    let optans = Prompt::Options.askuser("Edit the list of optional packages to install? [y/n/q] ");
-    if let Some(answer) = optans {
-        if answer.eq("y\n") {
-            let _ = OsCall::Interactive
-                .execute(&["vi ", &PACKAGE_FILE_PATH].concat(), "Launching editor");
+
+        let optans = Prompt::Options.askuser("Select c to edit the configuration, p to edit the package list, t to send a test email, or q to quit [c|p|t|q]");
+
+        if let Some(answer) = optans {
+            if answer.eq("c\n") {
+                let _ = OsCall::Interactive
+                    .execute(&["vi ", &CONFIG_FILE_PATH].concat(), "Launching editor");
+                running_config = Config::load();
+            }
+            if answer.eq("p\n") {
+                let _ = OsCall::Interactive
+                    .execute(&["vi ", &PACKAGE_FILE_PATH].concat(), "Launching editor");
+            }
+            if answer.eq("t\n") {
+                mail::test_mail(&running_config);
+                linux::clearscreen();
+                println!("{} Test email sent", prompt::revchevrons(Color::Green));
+                continue;
+            }
         }
+        linux::clearscreen();
     }
-    //
-    // Setup email
-    //
-    let optans = Prompt::Options.askuser("Setup email? [y/n/q] ");
-    if let Some(answer) = optans {
-        if answer.eq("y\n") {
-            running_config = mail::add_secret(running_config);
-            let _ = Config::save(running_config);
-        }
-    }
-    println!("{} Setup complete", prompt::chevrons(Color::Green));
 }
