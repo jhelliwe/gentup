@@ -19,6 +19,7 @@ pub static PACKAGE_FILE_PATH: &str = "/etc/default/gentup";
 pub struct Config {
     pub cleanup_default: bool,
     pub trim_default: bool,
+    pub background_default: bool,
     pub email_address: String,
 }
 
@@ -30,8 +31,9 @@ impl fmt::Display for Config {
             f,
             "cleanup_default: {}\n\
             trim_default: {}\n\
+            background_default: {}\n\
             email_address: {}\n",
-            self.cleanup_default, self.trim_default, self.email_address,
+            self.cleanup_default, self.trim_default, self.background_default, self.email_address,
         )
     }
 }
@@ -43,6 +45,7 @@ impl Config {
         Config {
             cleanup_default: false,
             trim_default: false,
+            background_default: false,
             email_address: "root@localhost".to_string(),
         }
     }
@@ -64,6 +67,7 @@ impl Config {
             "# Configuration options for gentup\n\
             # post-update cleanup, true or false\n\
             # post-update trim, true or false\n\
+            # background package downloads, true or false\n\
             # email address to send update reports to\n\
             "
         );
@@ -115,6 +119,9 @@ impl Config {
                     }
                     if let Some(switch) = getswitch("trim_default:", line) {
                         running_config.trim_default = switch;
+                    }
+                    if let Some(switch) = getswitch("background_default:", line) {
+                        running_config.background_default = switch;
                     }
                     if let Some(param) = getparam("email_address:", line) {
                         running_config.email_address = param;

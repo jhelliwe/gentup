@@ -1,2 +1,2 @@
 // Still in alpha!
-pub const VERSION: &str = "0.4.8a";
+pub const VERSION: &str = "0.4.9a";

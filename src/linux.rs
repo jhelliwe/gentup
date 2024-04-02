@@ -240,3 +240,7 @@ pub fn clearscreen() {
         cursor::MoveTo(0, 0)
     );
 }
+
+pub fn is_a_tty() -> bool {
+    true // TODO fully implement this function
+}

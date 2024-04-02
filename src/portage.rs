@@ -1,6 +1,6 @@
 use crate::{
     config::PACKAGE_FILE_PATH, linux, linux::CouldFail, linux::OsCall, linux::ShellOutResult, mail,
-    portage, prompt, Config, Prompt,
+    portage, prompt, Config,
 };
 use crossterm::{cursor, execute, style::Color};
 use filetime::FileTime;
@@ -32,12 +32,10 @@ impl PackageManager {
     pub fn update_all_packages(self) -> ShellOutResult {
         match self {
             PackageManager::NoDryRun => OsCall::Interactive.execute(
-                "emerge --quiet -uNDv --with-bdeps y --changed-use --complete-graph @world",
+                "emerge --quiet-build y -uNDv --autounmask n --with-bdeps y --changed-use --complete-graph @world",
                 "Updating world set",
             ),
-            PackageManager::DryRun => {
-                OsCall::Spinner.execute("emerge -puDv @world", "Checking for updates")
-            }
+            PackageManager::DryRun => OsCall::Spinner.execute("emerge -puDv @world", "Checking for updates"),
             _ => Ok((String::new(), 0)),
         }
     }
@@ -98,20 +96,15 @@ impl PackageManager {
             }
             PackageManager::PreserveKernel => {
                 let _ = OsCall::Interactive.execute(
-                "emerge -a --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
+                "emerge --depclean --exclude sys-kernel/gentoo-kernel-bin --exclude sys-kernel/gentoo-sources",
                 "Removing orphaned dependencies",
             ).exit_if_failed();
-                Prompt::PressReturn.askuser("Please verify the output of emerge --depclean above");
                 (0, String::new())
             }
             PackageManager::AllPackages => {
                 let _ = OsCall::Interactive
-                    .execute(
-                        "emerge --ask --depclean",
-                        "Removing all orphaned dependencies",
-                    )
+                    .execute("emerge --depclean", "Removing all orphaned dependencies")
                     .exit_if_failed();
-                Prompt::PressReturn.askuser("Please verify the output of emerge --depclean above");
                 (0, String::new())
             }
             _ => (0, String::new()),
@@ -153,7 +146,6 @@ impl PackageManager {
                 let _ = OsCall::Interactive
                     .execute("revdep-rebuild", "Rebuilding reverse dependencies")
                     .exit_if_failed();
-                Prompt::PressReturn.askuser("Please verify the output of revdep-rebuild above");
                 true
             }
             _ => false,
@@ -313,6 +305,7 @@ pub fn upgrade_package(package: &str) {
 
 // After package installs there are sometimes messages to the user advising them of actions they
 // need to take. These are collected into elog files and displayed here
+// TODO - remove this function in favour of configuring elog to email the user instead
 //
 pub fn elog_viewer() {
     let _ = OsCall::Interactive.execute("elogv", "Checking for new ebuild logs");
@@ -330,7 +323,7 @@ pub fn find_obsolete_configs() {
 //
 pub fn clean_old_kernels() {
     let _ = OsCall::Interactive
-        .execute("eclean-kernel -Aa", "Cleaning old kernels")
+        .execute("eclean-kernel -a", "Cleaning old kernels")
         .exit_if_failed();
 }
 
@@ -352,7 +345,7 @@ pub fn eix_update() {
 
 // handle_news checks to see if there is unread news and emails it if required
 //
-pub fn read_news(running_config: &Config) -> u32 {
+pub fn check_news(running_config: &Config) -> u32 {
     let mut count: u32 = 0;
     if let Ok((output, _)) = OsCall::Quiet
         .execute("eselect news count new", "")
@@ -363,12 +356,17 @@ pub fn read_news(running_config: &Config) -> u32 {
             println!("{} No unread news", prompt::revchevrons(Color::Blue));
         } else {
             println!(
-                "{} You have {} news item(s) to read",
+                "{} There are {} news item(s) to read",
                 prompt::revchevrons(Color::Yellow),
                 count,
             );
             if let Ok((output, _)) = OsCall::Quiet.execute("eselect news read", "News listing") {
                 mail::send_email(running_config, String::from("gentoo-news"), output);
+                println!(
+                    "{} News sent by email to {}",
+                    prompt::revchevrons(Color::Green),
+                    running_config.email_address
+                );
             }
         }
     }
@@ -376,6 +374,14 @@ pub fn read_news(running_config: &Config) -> u32 {
 }
 
 // dispatch_conf handles pending changes to package configuration files
+//
+// TODO - dispatch-conf is an interactive tool which blocks the fully-automated milestone
+// of running gentup from cron (not a tty). The complication of automating this is that the user
+// needs to make a decision based on each individual config file, and there are many. The solution
+// to this is to inform the user to run gentup --dispatch interactively, via email notifications
+//
+// This will require "not a tty" detection, and not running dispatch-conf if it is not attached to
+// a tty, and some slight logic change to add --dispatch to the command line argument checker
 //
 pub fn update_config_files() {
     let _ = OsCall::Interactive
@@ -385,7 +391,7 @@ pub fn update_config_files() {
 
 // Checks and corrects the ELOG configuration in make.conf
 //
-pub fn configure_elogv() {
+pub fn configure_elogv(running_config: &Config) {
     let makeconf = fs::read_to_string("/etc/portage/make.conf");
     if let Ok(contents) = makeconf {
         for eachline in contents.lines() {
@@ -399,10 +405,14 @@ pub fn configure_elogv() {
             .open("/etc/portage/make.conf")
             .unwrap();
         file.seek(SeekFrom::End(0)).unwrap();
-        file.write_all(
-            b"# Logging\nPORTAGE_ELOG_CLASSES=\"warn error log\"\nPORTAGE_ELOG_SYSTEM=\"save\"\n",
-        )
-        .unwrap();
+        let _ = writeln!(file, "# Logging");
+        let _ = writeln!(file, "PORTAGE_ELOG_CLASSES=\"warn error log\"");
+        let _ = writeln!(file, "PORTAGE_ELOG_SYSTEM=\"mail_summary\"");
+        let _ = writeln!(
+            file,
+            "PORTAGE_ELOG_MAILURI=\"{} /usr/bin/sendmail\"",
+            running_config.email_address
+        );
     }
 }
 
@@ -500,7 +510,7 @@ pub fn check_and_install_optional_packages() {
                 check
             );
             let cmdline = [
-                "emerge --quiet --autounmask y --autounmask-write y -av ",
+                "emerge --quiet --autounmask y --autounmask-write y -v ",
                 check,
             ]
             .concat();

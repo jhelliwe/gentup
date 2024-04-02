@@ -81,33 +81,29 @@ fn main() {
         "Perform an fstrim after the upgrade",
     ));
     arg_syntax.push(ArgumentStruct::from(
-        "u",
-        "unattended",
-        "Unattended upgrade - only partially implemented",
-    ));
-    arg_syntax.push(ArgumentStruct::from(
         "V",
         "version",
         "Display the program version",
     ));
 
-    // If this is not Gentoo Linux, explain this only works on Gentoo and exit
+    // If this is not Gentoo Linux, exit with an error message
     if let Err(error) = linux::check_distro("Gentoo") {
         eprintln!("{error}");
         process::exit(1);
     }
 
     // There is a configuration file for this program, by default in /etc/conf.d/gentup
-    // Load the saved config (or if no config file, use defaults)
+    // Load the saved config (or if no config file, request the user perform setup)
     //
     let running_config = if Path::new(&CONFIG_FILE_PATH).exists() {
         Config::load()
     } else {
         println!(
-            "{} No configuration file found. Using defaults",
+            "{} No configuration file found.",
             prompt::revchevrons(Color::Yellow)
         );
-        Config::build_default()
+        config::setup();
+        process::exit(1);
     };
 
     // Parse the command line arguments supplied by the user
@@ -144,8 +140,14 @@ fn main() {
                 }
             } else if running_config.trim_default || arguments.get("trim") {
                 println!(
-                    "{} Post-update filesystem trim is pending on cleanup",
+                    "{} Post-update filesystem trim is pending cleanup",
                     prompt::revchevrons(Color::Yellow)
+                );
+            }
+            if running_config.background_default || arguments.get("background") {
+                println!(
+                    "{} Background package downloading is enabled",
+                    prompt::revchevrons(Color::Green)
                 );
             }
 
@@ -159,7 +161,7 @@ fn main() {
             // updates, so the user is notified about actions they need to take. If elogv is
             // installed but not configured, this function call will configure elogv
             //
-            portage::configure_elogv();
+            portage::configure_elogv(&running_config);
 
             // If the user selected the --optional flag, check and install the optional packages.
             // This is mostly useful to get a newly installed bare-bones Gentoo install into a more
@@ -193,7 +195,9 @@ fn main() {
             // If there are no packages pending updates, we can quit at this stage
             // unless the user specifically asked for a cleanup to be run
             //
-            let pending_updates = portage::get_pending_updates(arguments.get("background"));
+            let pending_updates = portage::get_pending_updates(
+                arguments.get("background") || running_config.background_default,
+            );
             if !pending_updates && (!arguments.get("cleanup") && !running_config.cleanup_default) {
                 process::exit(0);
             }
@@ -201,7 +205,7 @@ fn main() {
             // Check the news - if there is news, email it to the user
             //
             println!("{} Checking Gentoo news", prompt::chevrons(Color::Green));
-            let _ = portage::read_news(&running_config);
+            portage::check_news(&running_config);
 
             // ==================
             // FULL SYSTEM UPDATE
@@ -218,7 +222,8 @@ fn main() {
             // =================
 
             portage::update_config_files(); // Handle updating package config files
-            portage::elog_viewer(); // Displays any messages from package installs to the user
+                                            // elog_viewer is being deprecated in favour of email the user instead
+                                            // portage::elog_viewer(); // Displays any messages from package installs to the user
 
             // =======
             // CLEANUP
