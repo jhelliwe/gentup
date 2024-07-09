@@ -4,6 +4,7 @@ use crate::{
 };
 use crossterm::{cursor, execute, style::Color};
 use filetime::FileTime;
+use gethostname::gethostname;
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Seek, SeekFrom, Write},
@@ -393,6 +394,9 @@ pub fn update_config_files() {
 //
 pub fn configure_elogv(running_config: &Config) {
     let makeconf = fs::read_to_string("/etc/portage/make.conf");
+    let hostname = gethostname()
+        .into_string()
+        .unwrap_or("localhost".to_string());
     if let Ok(contents) = makeconf {
         for eachline in contents.lines() {
             if eachline.contains("PORTAGE_ELOG_SYSTEM") {
@@ -407,12 +411,10 @@ pub fn configure_elogv(running_config: &Config) {
         file.seek(SeekFrom::End(0)).unwrap();
         let _ = writeln!(file, "# Logging");
         let _ = writeln!(file, "PORTAGE_ELOG_CLASSES=\"warn error log\"");
-        let _ = writeln!(file, "PORTAGE_ELOG_SYSTEM=\"mail_summary\"");
-        let _ = writeln!(
-            file,
-            "PORTAGE_ELOG_MAILURI=\"{} /usr/bin/sendmail\"",
-            running_config.email_address
-        );
+        let _ = writeln!(file, "PORTAGE_ELOG_SYSTEM=\"mail_summary save\"");
+        let _ = writeln!(file, "PORTAGE_ELOG_MAILURI=\"{} /usr/bin/sendmail\"", running_config.email_address);
+        let _ = writeln!(file, "PORTAGE_ELOG_MAILFROM=\"root@{}\"", hostname);
+        let _ = writeln!(file, "PORTAGE_ELOG_MAILSUBJECT=\"gentup elog summary from {}\"", hostname);
     }
 }
 
