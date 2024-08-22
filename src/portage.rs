@@ -412,9 +412,17 @@ pub fn configure_elogv(running_config: &Config) {
         let _ = writeln!(file, "# Logging");
         let _ = writeln!(file, "PORTAGE_ELOG_CLASSES=\"warn error log\"");
         let _ = writeln!(file, "PORTAGE_ELOG_SYSTEM=\"mail_summary save\"");
-        let _ = writeln!(file, "PORTAGE_ELOG_MAILURI=\"{} /usr/bin/sendmail\"", running_config.email_address);
+        let _ = writeln!(
+            file,
+            "PORTAGE_ELOG_MAILURI=\"{} /usr/bin/sendmail\"",
+            running_config.email_address
+        );
         let _ = writeln!(file, "PORTAGE_ELOG_MAILFROM=\"root@{}\"", hostname);
-        let _ = writeln!(file, "PORTAGE_ELOG_MAILSUBJECT=\"gentup elog summary from {}\"", hostname);
+        let _ = writeln!(
+            file,
+            "PORTAGE_ELOG_MAILSUBJECT=\"gentup elog summary from {}\"",
+            hostname
+        );
     }
 }
 
@@ -437,8 +445,8 @@ pub fn check_and_install_deps() {
             );
             let _ = OsCall::Spinner
                 .execute(
-                    &["emerge --quiet -v ", &package[0]].concat(),
-                    &["Installing ", &package[0]].concat(),
+                    &["emerge --quiet -v ", package[0]].concat(),
+                    &["Installing ", package[0]].concat(),
                 )
                 .exit_if_failed();
             if !&package[2].eq("") {

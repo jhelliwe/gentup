@@ -183,12 +183,12 @@ pub fn setup() {
         if let Some(answer) = optans {
             if answer.eq("c\n") {
                 let _ = OsCall::Interactive
-                    .execute(&["vi ", &CONFIG_FILE_PATH].concat(), "Launching editor");
+                    .execute(&["vi ", CONFIG_FILE_PATH].concat(), "Launching editor");
                 running_config = Config::load();
             }
             if answer.eq("p\n") {
                 let _ = OsCall::Interactive
-                    .execute(&["vi ", &PACKAGE_FILE_PATH].concat(), "Launching editor");
+                    .execute(&["vi ", PACKAGE_FILE_PATH].concat(), "Launching editor");
             }
             if answer.eq("t\n") {
                 mail::test_mail(&running_config);

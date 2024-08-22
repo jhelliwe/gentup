@@ -222,17 +222,12 @@ fn main() {
             // =================
 
             portage::update_config_files(); // Handle updating package config files
-                                            // elog_viewer is being deprecated in favour of email the user instead
-                                            // portage::elog_viewer(); // Displays any messages from package installs to the user
 
             // =======
             // CLEANUP
             // =======
 
             // List and remove orphaned dependencies.
-            // One important point, we force a cleanup if there are old kernel packages to remove
-            // otherwise /boot will become too full and cause issues with an unbootable system with
-            // a /boot 100% full with a truncated initrd file
             //
             let (orphans, kernels) = PackageManager::DryRun.depclean(); // DryRun mode only lists orphaned deps
             if orphans > 0 {
@@ -249,8 +244,8 @@ fn main() {
                     );
                     println!("{} All done!!!", prompt::chevrons(Color::Green));
                     process::exit(0);
-                } else if (arguments.get("cleanup") || running_config.cleanup_default)
-                    || kernels.ne("")
+                } else if arguments.get("cleanup") || running_config.cleanup_default
+                /* Change behaviour here - no longer force clean       || kernels.ne("") */
                 {
                     PackageManager::AllPackages.depclean(); // depcleans everything
                 }
@@ -258,7 +253,7 @@ fn main() {
 
             // Check for broken Reverse dependencies
             //
-            if (arguments.get("cleanup") || running_config.cleanup_default) || kernels.ne("") {
+            if arguments.get("cleanup") || running_config.cleanup_default {
                 if !PackageManager::DryRun.revdep_rebuild() {
                     PackageManager::NoDryRun.revdep_rebuild();
                 }
@@ -271,6 +266,11 @@ fn main() {
                     // if the user specifies --trim on the command line
                     linux::call_fstrim();
                 }
+            } else {
+                println!(
+                    "{} Cleanup is disabled. Prolonged skipping of cleanup is not advised",
+                    prompt::chevrons(Color::Yellow)
+                );
             }
             println!("{} All done!!!", prompt::chevrons(Color::Green));
         }

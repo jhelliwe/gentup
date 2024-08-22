@@ -194,7 +194,7 @@ pub fn check_distro(required_distro: &str) -> Result<String, String> {
             "Detected this system is running ",
             &detected_distro,
             " but this updater only works on ",
-            &required_distro,
+            required_distro,
             " Linux",
         ]
         .concat()),
