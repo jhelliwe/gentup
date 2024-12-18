@@ -324,7 +324,7 @@ pub fn find_obsolete_configs() {
 //
 pub fn clean_old_kernels() {
     let _ = OsCall::Interactive
-        .execute("eclean-kernel -a", "Cleaning old kernels")
+        .execute("eclean-kernel -a -n 2", "Cleaning old kernels")
         .exit_if_failed();
 }
 
