@@ -8,7 +8,7 @@ Gentoo installation up to date.
 Features:
 - This updater depends on eix, eclean-kernel, gentoolkit and elogv, so if these are not installed, the updater will install them.
 - The updater supports two configuration files, and these can be managed with "gentup --setup". These control if the
-  updater will perform a disk-space cleanup by default, a post-update filesystem trim by default, and enables the user to
+  updater will perform a disk-space cleanup by default, and enables the user to
   configure an email address to send notification emails to (This feature depends on the user setting up their sendmail environment
   separately.) The second configuration file contains a list of packages to install by default if they are missing.
 - The updater optionally installs the set of commonly installed packages, useful for a brand new Gentoo install.
@@ -24,4 +24,3 @@ Features:
 - The updater checks the sanity of the /etc/portage configuration files
 - The updater optionally removes old unused source distribution tarballs
 - The updater optionally cleans up old kernels from /boot, /lib/modules and the GRUB configuration files
-- The updater then optionally performs an fstrim of all filesystems

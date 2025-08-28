@@ -167,14 +167,6 @@ impl OsCall {
     }
 }
 
-pub fn call_fstrim() {
-    // A good example of how to use OsCall with the .execute and .exit_if_failed methods we defined
-    // above
-    let _ = OsCall::Spinner
-        .execute("fstrim -a", "Trimming filesystems")
-        .exit_if_failed();
-}
-
 // Returns the name of the Linux distro we are running on. Returns a failure if it isn't the distro
 // we are looking for
 pub fn check_distro(required_distro: &str) -> Result<String, String> {
@@ -203,7 +195,7 @@ pub fn check_distro(required_distro: &str) -> Result<String, String> {
 
 // This function removed numeric elements of a string
 pub fn stripchar(devicename: String) -> String {
-    return devicename.chars().filter(|c| c.is_numeric()).collect();
+    devicename.chars().filter(|c| c.is_numeric()).collect()
 }
 
 // Gets the current terminal size
@@ -214,10 +206,7 @@ pub fn termsize() -> (usize, usize) {
         session_width = w as usize;
         session_height = h as usize;
     } else {
-        eprintln!(
-            "Unable to get terminal size {} {}",
-            session_width, session_height
-        );
+        eprintln!("Unable to get terminal size {session_width} {session_height}",);
         process::exit(1);
     }
     (session_width, session_height)
@@ -239,8 +228,4 @@ pub fn clearscreen() {
         terminal::Clear(ClearType::All),
         cursor::MoveTo(0, 0)
     );
-}
-
-pub fn is_a_tty() -> bool {
-    true // TODO fully implement this function
 }

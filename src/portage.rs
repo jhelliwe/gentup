@@ -32,7 +32,7 @@ impl PackageManager {
     //
     pub fn update_all_packages(self) -> ShellOutResult {
         match self {
-            PackageManager::NoDryRun => OsCall::Interactive.execute(
+           PackageManager::NoDryRun => OsCall::Interactive.execute(
                 "emerge --quiet-build y -uNDv --autounmask n --with-bdeps y --changed-use --complete-graph @world",
                 "Updating world set",
             ),
@@ -324,7 +324,7 @@ pub fn find_obsolete_configs() {
 //
 pub fn clean_old_kernels() {
     let _ = OsCall::Interactive
-        .execute("eclean-kernel -a -n 2", "Cleaning old kernels")
+        .execute("eclean-kernel -A -s mtime -n2", "Cleaning old kernels")
         .exit_if_failed();
 }
 
@@ -376,14 +376,6 @@ pub fn check_news(running_config: &Config) -> u32 {
 
 // dispatch_conf handles pending changes to package configuration files
 //
-// TODO - dispatch-conf is an interactive tool which blocks the fully-automated milestone
-// of running gentup from cron (not a tty). The complication of automating this is that the user
-// needs to make a decision based on each individual config file, and there are many. The solution
-// to this is to inform the user to run gentup --dispatch interactively, via email notifications
-//
-// This will require "not a tty" detection, and not running dispatch-conf if it is not attached to
-// a tty, and some slight logic change to add --dispatch to the command line argument checker
-//
 pub fn update_config_files() {
     let _ = OsCall::Interactive
         .execute("dispatch-conf", "Merge config file changes")
@@ -417,11 +409,10 @@ pub fn configure_elogv(running_config: &Config) {
             "PORTAGE_ELOG_MAILURI=\"{} /usr/bin/sendmail\"",
             running_config.email_address
         );
-        let _ = writeln!(file, "PORTAGE_ELOG_MAILFROM=\"root@{}\"", hostname);
+        let _ = writeln!(file, "PORTAGE_ELOG_MAILFROM=\"root@{hostname}\"");
         let _ = writeln!(
             file,
-            "PORTAGE_ELOG_MAILSUBJECT=\"gentup elog summary from {}\"",
-            hostname
+            "PORTAGE_ELOG_MAILSUBJECT=\"gentup elog summary from {hostname}\""
         );
     }
 }
@@ -449,7 +440,7 @@ pub fn check_and_install_deps() {
                     &["Installing ", package[0]].concat(),
                 )
                 .exit_if_failed();
-            if !&package[2].eq("") {
+            if !&package[2].is_empty() {
                 let _ = OsCall::Spinner
                     .execute(package[2], "Post installation configuration")
                     .exit_if_failed();
@@ -486,12 +477,12 @@ pub fn check_and_install_optional_packages() {
         let path = Path::new(PACKAGE_FILE_PATH);
         let display = path.display();
         let mut file = match File::create(path) {
-            Err(why) => panic!("couldn't create {}: {}", display, why),
+            Err(why) => panic!("couldn't create {display}: {why}"),
             Ok(file) => file,
         };
         for check in packages_to_check {
             match writeln!(file, "{check}") {
-                Err(why) => panic!("couldn't write to {}: {}", display, why),
+                Err(why) => panic!("couldn't write to {display}: {why}"),
                 Ok(file) => file,
             }
         }
@@ -599,7 +590,7 @@ pub fn package_list(plist: &Vec<&str>) {
     let max_length = longest(plist);
     let (width, _height) = linux::termsize();
     let width = width as u16;
-    let number_of_items_per_line = width / (max_length + spaces);
+    let number_of_items_per_line = (width - spaces) / (max_length + spaces);
     let mut counter = 0;
     for item in plist {
         let shortitem = shortname(item);

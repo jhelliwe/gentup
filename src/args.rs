@@ -118,14 +118,14 @@ impl Search for ArgCheck {
             let line = format!("--{}|", eacharg.long);
             retval = retval + &line;
         }
-        retval = format!("{}]", retval);
+        retval = format!("{retval}]");
         retval
     }
 
     // Display the program version.
     //
     fn version() -> String {
-        format!("gentup version {}", VERSION)
+        format!("gentup version {VERSION}")
     }
 
     // The parse function is public and exposed to the calling code. It takes a Vector of valid

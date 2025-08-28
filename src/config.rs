@@ -18,7 +18,6 @@ pub static PACKAGE_FILE_PATH: &str = "/etc/default/gentup";
 //
 pub struct Config {
     pub cleanup_default: bool,
-    pub trim_default: bool,
     pub background_default: bool,
     pub email_address: String,
 }
@@ -30,10 +29,9 @@ impl fmt::Display for Config {
         write!(
             f,
             "cleanup_default: {}\n\
-            trim_default: {}\n\
             background_default: {}\n\
             email_address: {}\n",
-            self.cleanup_default, self.trim_default, self.background_default, self.email_address,
+            self.cleanup_default, self.background_default, self.email_address,
         )
     }
 }
@@ -44,7 +42,6 @@ impl Config {
     pub fn build_default() -> Self {
         Config {
             cleanup_default: false,
-            trim_default: false,
             background_default: false,
             email_address: "root@localhost".to_string(),
         }
@@ -57,7 +54,7 @@ impl Config {
         let display = path.display();
         let mut config_file = match File::create(path) {
             Err(error) => {
-                eprintln!("Could not create {} - {}", display, error);
+                eprintln!("Could not create {display} - {error}");
                 process::exit(1);
             }
             Ok(config_file) => config_file,
@@ -66,12 +63,11 @@ impl Config {
             config_file,
             "# Configuration options for gentup\n\
             # post-update cleanup, true or false\n\
-            # post-update trim, true or false\n\
             # background package downloads, true or false\n\
             # email address to send update reports to\n\
             "
         );
-        let _ = writeln!(config_file, "{}", self);
+        let _ = writeln!(config_file, "{self}");
         self
     }
 
@@ -116,9 +112,6 @@ impl Config {
                 for line in contents.lines() {
                     if let Some(switch) = getswitch("cleanup_default:", line) {
                         running_config.cleanup_default = switch;
-                    }
-                    if let Some(switch) = getswitch("trim_default:", line) {
-                        running_config.trim_default = switch;
                     }
                     if let Some(switch) = getswitch("background_default:", line) {
                         running_config.background_default = switch;

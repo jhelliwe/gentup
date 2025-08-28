@@ -29,7 +29,7 @@ pub mod version;
 use crate::{
     args::{ArgCheck, ArgumentStruct, Search},
     config::{Config, CONFIG_FILE_PATH, PACKAGE_FILE_PATH},
-    linux::CouldFail,
+    linux::{CouldFail, OsCall},
     portage::PackageManager,
     prompt::Prompt,
     version::VERSION,
@@ -76,11 +76,6 @@ fn main() {
         "Set configuration options",
     ));
     arg_syntax.push(ArgumentStruct::from(
-        "t",
-        "trim",
-        "Perform an fstrim after the upgrade",
-    ));
-    arg_syntax.push(ArgumentStruct::from(
         "V",
         "version",
         "Display the program version",
@@ -113,12 +108,12 @@ fn main() {
     match ArgCheck::parse(arg_syntax, env::args()) {
         Err(error) => {
             // Command line arguments are incorrect - inform the user and exit
-            eprintln!("{}", error);
+            eprintln!("{error}");
             process::exit(1);
         }
         Ok(arguments) => {
             linux::clearscreen();
-            println!("\nWelcome to the Gentoo Linux Updater v{}\n", VERSION);
+            println!("\nWelcome to the Gentoo Linux Updater v{VERSION}\n");
 
             // Handle configuration setup if the user selected the --setup option
             if arguments.get("setup") {
@@ -131,17 +126,6 @@ fn main() {
                 println!(
                     "{} Post-update cleanup is enabled",
                     prompt::revchevrons(Color::Green)
-                );
-                if running_config.trim_default || arguments.get("trim") {
-                    println!(
-                        "{} Post-update filesystem trim is enabled",
-                        prompt::revchevrons(Color::Green)
-                    );
-                }
-            } else if running_config.trim_default || arguments.get("trim") {
-                println!(
-                    "{} Post-update filesystem trim is pending cleanup",
-                    prompt::revchevrons(Color::Yellow)
                 );
             }
             if running_config.background_default || arguments.get("background") {
@@ -212,9 +196,13 @@ fn main() {
             // ==================
 
             if pending_updates {
+                let _ = OsCall::Quiet.execute("mount /boot", "Mounting /boot");
+                let _ = OsCall::Quiet.execute("mount /efi", "Mounting /efi");
                 let _ = PackageManager::NoDryRun
                     .update_all_packages()
                     .exit_if_failed();
+                let _ = OsCall::Quiet.execute("umount /efi", "Unmounting /efi");
+                let _ = OsCall::Quiet.execute("umount /boot", "Unmounting /boot");
             }
 
             // =================
@@ -244,9 +232,7 @@ fn main() {
                     );
                     println!("{} All done!!!", prompt::chevrons(Color::Green));
                     process::exit(0);
-                } else if arguments.get("cleanup") || running_config.cleanup_default
-                /* Change behaviour here - no longer force clean       || kernels.ne("") */
-                {
+                } else if arguments.get("cleanup") || running_config.cleanup_default {
                     PackageManager::AllPackages.depclean(); // depcleans everything
                 }
             }
@@ -260,12 +246,6 @@ fn main() {
                 portage::find_obsolete_configs(); // Find any obsolete portage configurations from removed packages
                 portage::clean_distfiles(); // Cleanup old distfiles otherwise these will grow indefinitely
                 portage::clean_old_kernels(); // Cleanup unused kernels from /usr/src, /boot, /lib/modules and the grub config
-
-                if arguments.get("trim") || running_config.trim_default {
-                    // A full update creates so many GB of temp files it warrants a trim, but only
-                    // if the user specifies --trim on the command line
-                    linux::call_fstrim();
-                }
             } else {
                 println!(
                     "{} Cleanup is disabled. Prolonged skipping of cleanup is not advised",
