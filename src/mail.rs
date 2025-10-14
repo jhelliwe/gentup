@@ -26,7 +26,7 @@ pub fn send_email(running_config: &Config, subject: String, email_body: String) 
         let _ = OsCall::Quiet
             .piped(
                 &["cat ", &temp_file_name].concat(),
-                &["mail -s ", &subject, " ", &running_config.email_address].concat(),
+                &["mail -s ", &subject, " --append=FROM:", &running_config.email_address, " ", &running_config.email_address].concat(),
             )
             .exit_if_failed();
     }
