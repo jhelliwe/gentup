@@ -82,7 +82,7 @@ fn main() {
     ));
 
     // If this is not Gentoo Linux, exit with an error message
-    if let Err(error) = linux::check_distro("Gentoo") {
+    if let Err(error) = linux::check_distro("'Gentoo'") {
         eprintln!("{error}");
         process::exit(1);
     }
